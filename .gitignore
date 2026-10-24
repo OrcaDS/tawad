@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Secrets and local config
+.env
+*.json.key
+service-account*.json
+
+# Data: never commit (only tests/fixtures/ is allowed)
+lake/
+recon_samples/
+*.duckdb
+*.duckdb.wal
+*.parquet
+*.pdf
+!tests/fixtures/**/*.parquet
+!tests/fixtures/**/*.pdf
+
+# dbt
+transform/target/
+transform/dbt_packages/
+transform/logs/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Added by repo-ready
+.env.*
+!.env.example
+.claude/settings.local.json
