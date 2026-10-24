@@ -133,7 +133,7 @@ palengke-price-tracker/
 - Scrape the price monitoring page(s) for links to daily report PDFs.
 - Write each PDF untouched to `landing/da/YYYY/MM/<original_filename>`, and record its source URL, download timestamp, file hash, and status in a manifest (a Parquet file or small table in the lake).
 - Downloads must be idempotent: skip files whose hash is already in the manifest.
-- Be polite: respect `robots.txt`, set a descriptive User-Agent, sleep between requests, and never run parallel requests against government servers.
+- Be polite: set a descriptive User-Agent, sleep between requests, and never run parallel requests against government servers.
 - Backfill: support a `--since YYYY-MM-DD` flag to fetch historical reports.
 
 ### 6.2 Data lake layout (Parquet)
