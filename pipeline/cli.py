@@ -11,8 +11,12 @@ import dataclasses
 import logging
 import sys
 from collections.abc import Callable, Sequence
+from datetime import UTC, date, datetime
 
 from config.settings import Settings, load_settings
+from ingestion.common import manifest
+from ingestion.common.storage import get_storage
+from ingestion.da_prices import discover, download
 
 logger = logging.getLogger("tawad")
 
@@ -32,6 +36,32 @@ def _show_config(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def _since(value: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected YYYY-MM-DD, got {value!r}") from None
+
+
+def _positive(value: str) -> int:
+    if not value.isdigit() or int(value) < 1:
+        raise argparse.ArgumentTypeError(f"expected a positive whole number, got {value!r}")
+    return int(value)
+
+
+def _ingest_da(args: argparse.Namespace, settings: Settings) -> int:
+    """Discover DA reports, update the manifest, and download what is missing."""
+    storage = get_storage(settings)
+    fetch = download.make_fetcher(settings)
+    reports = discover.discover(download.fetch_listing(fetch, settings))
+    entries = manifest.merge(manifest.load(storage), reports, datetime.now(UTC))
+    manifest.save(storage, entries)
+    if args.discover_only:
+        return 0
+    download.download_pending(storage, entries, fetch, since=args.since, limit=args.limit)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tawad", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -40,8 +70,14 @@ def build_parser() -> argparse.ArgumentParser:
         handler=_show_config
     )
     da = sub.add_parser("ingest-da", help="Discover, download and extract DA reports")
-    da.add_argument("--since", metavar="YYYY-MM-DD", help="Backfill reports from this date")
-    da.set_defaults(handler=_not_yet(3))
+    da.add_argument(
+        "--since", metavar="YYYY-MM-DD", type=_since, help="Only download reports from this date"
+    )
+    da.add_argument("--limit", metavar="N", type=_positive, help="Download at most N files")
+    da.add_argument(
+        "--discover-only", action="store_true", help="Update the manifest without downloading"
+    )
+    da.set_defaults(handler=_ingest_da)
     sub.add_parser("ingest-primary", help="Pull my Google Form responses").set_defaults(
         handler=_not_yet(6)
     )

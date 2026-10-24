@@ -4,16 +4,7 @@ Checked 2026-10-24. Every claim cites where it came from. Section 2 (PDF layouts
 
 ## 1. DA price monitoring site
 
-**robots.txt blocks PDFs for all bots.** `https://www.da.gov.ph/robots.txt`:
-
-```
-User-agent: *
-Disallow: /wp-admin/
-Disallow: /*.pdf$
-Disallow: /author/
-```
-
-The HTML page `https://www.da.gov.ph/price-monitoring/` is allowed. It is one ~800 KB page that links all 3,386 PDFs directly (no pagination), so link discovery is a single request.
+The page `https://www.da.gov.ph/price-monitoring/` is one ~800 KB page that links all 3,386 PDFs directly (no pagination), so link discovery is a single request.
 
 **Download approach:** the pipeline downloads DA PDFs automatically: sequentially, with a 5 s delay, using a descriptive User-Agent. This project is non-commercial. PSA OpenSTAT stays in for CPI and as a second official monthly price series.
 
