@@ -85,7 +85,7 @@ Skipped page types: `infographic`, `stall_count`, `notes`, `image_only`, `unread
 
 ## Daily range reports: `market_range` and `ncr_range` (checked 2026-10-26 on all 1,900 `price_monitoring` files)
 
-`ingestion/da_prices/extract/market_range.py` and `ncr_range.py` read the daily report packets from **Jan 16, 2025 on**: 553 reports, 296,142 bronze rows (248,451 per market, 47,691 NCR-wide). The same packets from Dec 2022 to Jan 2025 have NCR posters instead of tables (below), and until Apr 2024 pork and chicken pages by market (below). A report lands once any of its price page types can be read; the unread types are listed in the manifest (`status_reason = "partial: ncr_range"`) and `extract-da --redo` fills them in later. 46 late-2021 reports wait (posters on both page types, so nothing is readable).
+`ingestion/da_prices/extract/market_range.py` and `ncr_range.py` read the daily report packets from **Jan 16, 2025 on**: 553 reports, 296,142 bronze rows (248,451 per market, 47,691 NCR-wide). The same packets from Dec 2022 to Jan 2025 have NCR posters instead of tables (below), and until Apr 2024 pork and chicken pages by market (below). From Sep 2021 to Dec 2022 the NCR page compares today's prevailing prices with the last report's (`ncr_compare`, below); those 286 reports land partial until their per-market and pork/chicken pages can be read. A report lands once any of its price page types can be read; the unread types are listed in the manifest (`status_reason = "partial: ncr_range"`) and `extract-da --redo` fills them in later. 46 late-2021 reports wait (posters on both page types, so nothing is readable).
 
 **pdfplumber's tables and words can't be trusted on these pages.** Below the header, rows often lose their cell borders and land in one cell, sometimes two markets in one cell. pdfplumber also glues neighbouring cells into one word (`100.00100.00`, `NOT AVAILABLE160.00`). Characters inside a word sit 0.0–0.1 pt apart, separate words at least 1.1 pt, so both extractors place single characters into columns and only then join them into text, with a space at every gap over 0.5 pt (`extract/layout.py`).
 
@@ -121,6 +121,17 @@ Skipped page types: `infographic`, `stall_count`, `notes`, `image_only`, `unread
 - **Footnote marks** stay raw on both sides: in names (`Alumahan b`, `Large)d`) and in prices (`250.00*`, `**35.00`, `100*`, `90.00g`). Missing glyphs show as `(cid:10)` (`IMPORTED C(cid:10)OMMERCIAL RICE`).
 - **Hidden text.** Some 2024 pages carry stray words behind the panels (`Glutinous`, `Japanese` near the corn rows); they join the nearest name (`Corn (White)\nGlutinous`).
 - **Not read:** the title and date above the panels, DA's contact block at the top right (phone, email, address), and the footnote.
+
+### NCR today vs yesterday (`ncr_compare`, Sep 2021 → Dec 2022; checked on all 287 pages)
+
+"Prevailing Retail Prices of Selected Agri-fishery Commodities at NCR Markets" posters: the same panels as the 2023–24 NCR posters, but each item has two prevailing prices, today's and the last report's (`Today` / `Yesterday`, `Last Friday`, `This Monday`, `Previous Monitoring`; the legend at the top names both dates). `ncr_compare.py` hands the page to the poster reader after three changes, and keeps only today's price, in `price_prevailing_raw` (the other is the earlier report's own price). Rows get `layout = "compare"`. 14,613 rows, 51 items on 283 of 287 pages.
+
+- **Page sizes** run from 792 to 1257 pt wide (June 2022), so positions are scaled to 792 pt first. Today and yesterday sit up to ~30 pt apart after scaling, so price groups may be 35 pt apart (posters: 25).
+- **Dropped:** the legend box and the dates under it, and the column labels over each panel (also glued, `TodayPrevious`).
+- **`NOT` over `AVAILABLE`** is one cell on two lines; it becomes one price at the cell's middle height, so it pairs with the other column's price.
+- **A lone price is today's.** That's true of all 16 cases: a panel with only a `Today` column (Oct 4, 2021) and DA's overprinted cells, where a price is drawn on top of `NOT AVAILABLE` (`NOT AVAILA3B0L0E.00`, kept raw).
+- **Panels without prices.** On Oct 5–6, 2021 the OTHER COMMODITIES panel has names but no prices, so it gives no rows (and, since the poster reader now ends the last column at its prices, its names don't join the FRUITS rows).
+- **Known losses:** on Feb 22 and Mar 8, 2022 one price is overprinted inside its row's name (`Imported Round Scad 18N0O.0T0AVAILABLE`), so that item has no price and its name becomes a category (2 rows lost). The `RICE (per kg)` panel title sometimes chains into the rice sub-headings (`(per\nIMPORTED COMMERCIAL RICE`, 48 rows); `IMPORTED` / `LOCAL` stays in the category.
 
 ### Pork and chicken by market (`pork_by_market`, `chicken_by_market`, Dec 28, 2022 → Apr 18, 2024; checked on all 942 pages of 314 reports)
 

@@ -285,17 +285,13 @@ def _join_not_available_pairs(words: Sequence[Char]) -> list[Char]:
     return [w for w in result if id(w) not in used]
 
 
-def _groups(words: Sequence[Char]) -> list[list[Char]]:
+def _groups(words: Sequence[Char], gap: float) -> list[list[Char]]:
     """Price groups: prices side by side at about the same height. Not by line: a high price
     can sit a little lower than its low and fall into another line."""
     groups: list[list[Char]] = []
     for word in sorted((w for w in words if _is_price(w)), key=lambda w: w.x0):
         group = next(
-            (
-                g
-                for g in groups
-                if _same_height(g[-1], word) and 0 <= word.x0 - g[-1].x1 < GROUP_GAP
-            ),
+            (g for g in groups if _same_height(g[-1], word) and 0 <= word.x0 - g[-1].x1 < gap),
             None,
         )
         if group is None:
@@ -328,12 +324,14 @@ def _text(line: Sequence[Char]) -> str:
     return " ".join(w.text for w in sorted(line, key=lambda w: w.x0))
 
 
-def _poster(number: int, words: Sequence[Char], footer: float) -> list[Item]:
+def _poster(
+    number: int, words: Sequence[Char], footer: float, group_gap: float = GROUP_GAP
+) -> list[Item]:
     date = min((w.top for w in words if _WEEKDAY.match(w.text)), default=0.0)
     body = _join_not_available_pairs([w for w in words if date + 3 < w.top < footer])
     contact = _contact(body)
     body = [w for w in body if id(w) not in contact]
-    groups = _groups(body)
+    groups = _groups(body, group_gap)
     if not groups:
         raise Unsupported(f"no LOW/HIGH header or price groups on page {number}")
     # columns: price group starts that line up, each ending at its rightmost price
@@ -349,7 +347,7 @@ def _poster(number: int, words: Sequence[Char], footer: float) -> list[Item]:
     items: list[Item] = []
     for k, column in enumerate(columns):
         left = rights[k - 1] if k else float("-inf")
-        right = rights[k] if k < len(columns) - 1 else float("inf")
+        right = rights[k]  # names sit left of their prices
         rows = sorted(column, key=lambda g: g[0].top)
         tops = [min(w.top for w in g) for g in rows]
         names: list[list[str]] = [[] for _ in rows]

@@ -30,6 +30,7 @@ from ingestion.da_prices.extract import (
     by_market,
     daily_index,
     market_range,
+    ncr_compare,
     ncr_range,
     weekly_avg,
 )
@@ -75,6 +76,7 @@ EXTRACTORS: dict[str, Extractor] = {
     classify.WEEKLY_AVG: Extractor("1", weekly_avg.extract),
     classify.MARKET_RANGE: Extractor("1", market_range.extract),
     classify.NCR_RANGE: Extractor("1", ncr_range.extract),
+    classify.NCR_COMPARE: Extractor("1", ncr_compare.extract),
     classify.PORK_BY_MARKET: Extractor("1", by_market.extract),
     classify.CHICKEN_BY_MARKET: Extractor("1", by_market.extract),
 }
