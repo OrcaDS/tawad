@@ -19,8 +19,20 @@ tables run into each other), so the page is read from words built from its chara
 - A row that gets two values for one column is two rows run together: ``RowMerge`` is
   raised (the report fails with that reason) rather than guessing which price is whose.
 
-The Dec 2022 - Dec 2024 posters (panels of ``name  low-high`` with no column headers) are not
-read yet: those pages raise ``Unsupported``.
+The Dec 2022 → Jan 15, 2025 pages are posters instead: panels of ``name  low - high`` with no
+column headers (``_poster``):
+
+- A price group is the prices on one line close together (``low``, ``-``, ``high``; or one
+  value, or ``NOT AVAILABLE``, for low = high). Group starts line up into the page's price
+  columns, and every word belongs to the column whose prices end right of it.
+- Within a column, each name line joins the nearest price group within ``REACH`` (names wrap
+  above and below their price). Lines that join none are panel titles and sub-headings
+  (``IMPORTED COMMERCIAL RICE``, ``Feed Grade``); lines less than ``CHAIN`` apart are one
+  heading. A heading is the category of the rows below it until the next heading or a gap
+  wider than ``PANEL_GAP``: a panel can share a price column with one whose heading sits in
+  another column (2024: the eggs below CORN), and its rows get no category rather than a
+  wrong one.
+- The report title and date above the panels, and the footnote, are not read.
 """
 
 from __future__ import annotations
@@ -157,7 +169,7 @@ def items_from_page(number: int, chars: Sequence[Char], page_bottom: float) -> l
     words = layout.words(chars)
     headers = _headers(words)
     if not headers:
-        raise Unsupported(f"no LOW/HIGH header on page {number}")
+        return _poster(number, words, _footer_top(words, page_bottom))
     words = _join_not_available(words)
     # tables side by side: a new table starts where a header starts right of the last one's end
     tables: list[list[Header]] = []
@@ -227,6 +239,155 @@ def _block(header: Header, words: Sequence[Char]) -> list[Item]:
                 **fields,
             )
         )
+    return items
+
+
+POSTER = "poster"  # the layout of poster rows: they have no header cells
+REACH = 10.0  # a name line sits at most this far above or below its price group
+GROUP_GAP = 25.0  # the prices of one group are closer than this; columns are further apart
+COLUMN_GAP = 30.0  # the starts of one column's price groups differ by less than this
+CHAIN = 15.0  # heading lines closer than this are one heading ("FRUITS" / "(per kg)": 13.2)
+PANEL_GAP = 29.0  # rows of one panel are at most ~27 pt apart; a wider gap starts a new panel
+SEPARATOR_REACH = 10.0  # a range separator sits at most this far outside its group's prices
+# footnote marks around prices stay in the raw text: "250.00*", "**35.00", "100*", "90.00g"
+_POSTER_PRICE = re.compile(r"^\**(\d{1,3}(,\d{3})*\.\d{1,2}|\d{1,3}(?=\*))\**[a-j]?$")
+_CONTACT = re.compile(r"@|^loc\.$|^\(02\)$|^\d{3,4}-\d{4}$|^Floor,$|^Elliptical$|Diliman")
+_WEEKDAY = re.compile(r"(Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day\b")
+
+
+def _is_price(word: Char) -> bool:
+    return word.text.startswith("NOT AVA") or bool(_POSTER_PRICE.match(word.text))  # AVALABLE
+
+
+def _same_height(a: Char, b: Char) -> bool:
+    return abs(a.top - b.top) < layout.LINE_GAP
+
+
+def _join_not_available_pairs(words: Sequence[Char]) -> list[Char]:
+    """``NOT`` + ``AVAILABLE`` side by side as one word. Posters stack rows too tightly for
+    ``_join_not_available``'s bands: two rows' NOTs would pair with one AVAILABLE."""
+    used: set[int] = set()
+    result = []
+    for word in words:
+        if word.text == "NOT":
+            after = next(
+                (
+                    w
+                    for w in words
+                    if w.text.startswith("AVA") and _same_height(w, word) and 0 < w.x0 - word.x1 < 5
+                ),
+                None,
+            )
+            if after is not None:
+                used.add(id(after))
+                word = replace(word, text=f"NOT {after.text}", x1=after.x1)
+        result.append(word)
+    return [w for w in result if id(w) not in used]
+
+
+def _groups(words: Sequence[Char]) -> list[list[Char]]:
+    """Price groups: prices side by side at about the same height. Not by line: a high price
+    can sit a little lower than its low and fall into another line."""
+    groups: list[list[Char]] = []
+    for word in sorted((w for w in words if _is_price(w)), key=lambda w: w.x0):
+        group = next(
+            (
+                g
+                for g in groups
+                if _same_height(g[-1], word) and 0 <= word.x0 - g[-1].x1 < GROUP_GAP
+            ),
+            None,
+        )
+        if group is None:
+            groups.append([word])
+        else:
+            group.append(word)
+    return groups
+
+
+def _separates(dash: Char, group: Sequence[Char]) -> bool:
+    """A ``-`` between, or just before or after, a group's prices is the range separator."""
+    return (
+        abs(dash.top - group[0].top) < ROW_GAP
+        and group[0].x0 - SEPARATOR_REACH <= dash.x0
+        and dash.x1 <= group[-1].x1 + SEPARATOR_REACH
+    )
+
+
+def _contact(words: Sequence[Char]) -> set[int]:
+    """DA's contact block (phone, email, address) at the top right: not part of any panel."""
+    found = [w for w in words if _CONTACT.search(w.text)]
+    if not found:
+        return set()
+    left = min(w.x0 for w in found) - 15  # the "-" bullets in front of each line
+    top, bottom = min(w.top for w in found) - 3, max(w.top for w in found) + 3
+    return {id(w) for w in words if w.x0 >= left and top <= w.top <= bottom}
+
+
+def _text(line: Sequence[Char]) -> str:
+    return " ".join(w.text for w in sorted(line, key=lambda w: w.x0))
+
+
+def _poster(number: int, words: Sequence[Char], footer: float) -> list[Item]:
+    date = min((w.top for w in words if _WEEKDAY.match(w.text)), default=0.0)
+    body = _join_not_available_pairs([w for w in words if date + 3 < w.top < footer])
+    contact = _contact(body)
+    body = [w for w in body if id(w) not in contact]
+    groups = _groups(body)
+    if not groups:
+        raise Unsupported(f"no LOW/HIGH header or price groups on page {number}")
+    # columns: price group starts that line up, each ending at its rightmost price
+    columns: list[list[list[Char]]] = []
+    for group in sorted(groups, key=lambda g: g[0].x0):
+        if columns and group[0].x0 - columns[-1][-1][0].x0 < COLUMN_GAP:
+            columns[-1].append(group)
+        else:
+            columns.append([group])
+    rights = [max(w.x1 for g in column for w in g) for column in columns]
+    in_group = {id(w) for g in groups for w in g}
+    in_group |= {id(w) for w in body if w.text == "-" for g in groups if _separates(w, g)}
+    items: list[Item] = []
+    for k, column in enumerate(columns):
+        left = rights[k - 1] if k else float("-inf")
+        right = rights[k] if k < len(columns) - 1 else float("inf")
+        rows = sorted(column, key=lambda g: g[0].top)
+        tops = [min(w.top for w in g) for g in rows]
+        names: list[list[str]] = [[] for _ in rows]
+        headings: list[tuple[float, float, list[str]]] = []  # top, bottom, lines
+        other = [w for w in body if left < w.x <= right and id(w) not in in_group]
+        for line in layout.lines(other):
+            line = [w for w in line if w.text != "-" or len(line) > 1]  # a stray separator
+            if not line:
+                continue
+            top = min(w.top for w in line)
+            near = min(range(len(rows)), key=lambda i: abs(tops[i] - top))
+            gap = abs(tops[near] - top)
+            if gap <= REACH and not (_is_heading(line) and gap > ROW_GAP):
+                names[near].append(_text(line))
+            elif headings and top - headings[-1][1] < CHAIN:
+                headings[-1][2].append(_text(line))
+                headings[-1] = (headings[-1][0], top, headings[-1][2])
+            else:
+                headings.append((top, top, [_text(line)]))
+        category, previous = None, float("-inf")
+        for group, top, name in zip(rows, tops, names, strict=True):
+            if len(group) > 2:
+                raise RowMerge(f"{len(group)} prices in one group on page {number}")
+            between = [lines for start, _, lines in headings if previous < start < top]
+            if between:
+                category = "\n".join(between[-1])
+            elif top - previous > PANEL_GAP:
+                category = None  # a new panel whose heading is in another column
+            previous = top
+            items.append(
+                Item(
+                    layout=POSTER,
+                    commodity_raw="\n".join(name) or None,
+                    category_header_raw=category,
+                    price_low_raw=group[0].text,
+                    price_high_raw=group[-1].text,
+                )
+            )
     return items
 
 
