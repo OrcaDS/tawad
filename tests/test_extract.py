@@ -101,13 +101,41 @@ def test_price_monitoring_market_and_ncr_pages(storage: LocalStorage) -> None:
     ]
 
 
-def test_unsupported_layout_leaves_the_report_waiting(
+def _poster(pages):
+    raise Unsupported("2023 poster")
+
+
+def test_unread_layout_lands_the_rest_as_partial(
     storage: LocalStorage, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def poster(pages):
-        raise Unsupported("2023 poster")
+    monkeypatch.setitem(EXTRACTORS, "ncr_range", Extractor("1", _poster))
+    entry = _entry(storage, "pm_2026-10-01_p3-4.pdf", date(2026, 10, 1), PRICE_MONITORING)
+    (result,) = extract_pending(storage, [entry])
+    assert (result.status, result.status_reason) == (EXTRACTED, "partial: ncr_range")
+    rows = storage.read_parquet(table_path(entry)).to_pylist()
+    assert {r["page_type"] for r in rows} == {"market_range"}
 
-    monkeypatch.setitem(EXTRACTORS, "ncr_range", Extractor("1", poster))
+    monkeypatch.undo()  # the extractor learns the layout: --redo fills the report in
+    (redone,) = extract_pending(storage, [result], redo=True)
+    assert (redone.status, redone.status_reason) == (EXTRACTED, None)
+    rows = storage.read_parquet(table_path(entry)).to_pylist()
+    assert {r["page_type"] for r in rows} == {"market_range", "ncr_range"}
+
+
+def test_page_type_without_extractor_lands_the_rest_as_partial(
+    storage: LocalStorage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delitem(EXTRACTORS, "ncr_range")
+    entry = _entry(storage, "pm_2026-10-01_p3-4.pdf", date(2026, 10, 1), PRICE_MONITORING)
+    (result,) = extract_pending(storage, [entry])
+    assert (result.status, result.status_reason) == (EXTRACTED, "partial: ncr_range")
+
+
+def test_no_readable_price_page_leaves_the_report_waiting(
+    storage: LocalStorage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(EXTRACTORS, "ncr_range", Extractor("1", _poster))
+    monkeypatch.setitem(EXTRACTORS, "market_range", Extractor("1", _poster))
     entry = _entry(storage, "pm_2026-10-01_p3-4.pdf", date(2026, 10, 1), PRICE_MONITORING)
     (result,) = extract_pending(storage, [entry])
     assert result.status == DOWNLOADED

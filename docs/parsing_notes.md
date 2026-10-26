@@ -85,7 +85,7 @@ Skipped page types: `infographic`, `stall_count`, `notes`, `image_only`, `unread
 
 ## Daily range reports: `market_range` and `ncr_range` (checked 2026-10-26 on all 1,900 `price_monitoring` files)
 
-`ingestion/da_prices/extract/market_range.py` and `ncr_range.py` read the daily report packets from **Jan 16, 2025 on**: 553 reports, 296,142 bronze rows (248,451 per market, 47,691 NCR-wide). The same packets from Dec 2022 to Jan 2025 wait: their `market_range` pages read fine, but their `ncr_range` pages are posters (below), and a report lands only when every price page in it can be read. 46 late-2021 reports also wait (posters on both page types).
+`ingestion/da_prices/extract/market_range.py` and `ncr_range.py` read the daily report packets from **Jan 16, 2025 on**: 553 reports, 296,142 bronze rows (248,451 per market, 47,691 NCR-wide). The same packets from Dec 2022 to Jan 2025 land as partial reports: their `market_range` pages read fine, but their `ncr_range` pages are posters (below). A report lands once any of its price page types can be read; the unread types are listed in the manifest (`status_reason = "partial: ncr_range"`) and `extract-da --redo` fills them in later. 46 late-2021 reports wait (posters on both page types, so nothing is readable).
 
 **pdfplumber's tables and words can't be trusted on these pages.** Below the header, rows often lose their cell borders and land in one cell, sometimes two markets in one cell. pdfplumber also glues neighbouring cells into one word (`100.00100.00`, `NOT AVAILABLE160.00`). Characters inside a word sit 0.0–0.1 pt apart, separate words at least 1.1 pt, so both extractors place single characters into columns and only then join them into text, with a space at every gap over 0.5 pt (`extract/layout.py`).
 
@@ -97,7 +97,7 @@ Skipped page types: `infographic`, `stall_count`, `notes`, `image_only`, `unread
 - **Footnote inside the table box** (`Source: …`, Aug 19, 2025) ends the table.
 - **DA typos kept raw:** `NOT AVAILABKE`, `NOT AVAILBLE`, `NOT AVAILANBLE`, `NOT AVAILABLE]`, and `#####` (an Excel column too narrow, Feb 2024).
 - **Markets per page** range from 10 to 36: the number of markets grew from 13 (2023) to about 30–36 (2025–2026). 45 market names appear, with renames (`Mandaluyong Public Market` → `… I` and `… II`).
-- **Not read yet (2021-09 → 2022-12):** posters (no `MARKET` header) and grids whose last header cell names several commodities (`Pechay Red Onion Sugar\n*Egg (Medium) …`). These pages raise `Unsupported` and their reports wait.
+- **Not read yet (2021-09 → 2022-12):** posters (no `MARKET` header) and grids whose last header cell names several commodities (`Pechay Red Onion Sugar\n*Egg (Medium) …`). These pages raise `Unsupported`: their reports land partial if another page type reads, else wait.
 
 ### NCR ranges (`ncr_range`, Jan 16, 2025 → now)
 

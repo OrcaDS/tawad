@@ -2,9 +2,11 @@
 
 Every page is classified (``classify.py``) and handed to the extractor for its page type. Rows
 keep cell text exactly as pdfplumber reads it; typing and cleaning happen in silver. A report
-is extracted only when every price page in it has an extractor that can read its layout, so
-a partly supported report waits rather than landing half-read. A report that can't be read
-is marked ``failed`` in the manifest with the reason, never dropped.
+lands as soon as one of its price page types can be read: page types with no extractor, or
+whose layout raises ``Unsupported``, are named in the manifest (``status_reason`` =
+``"partial: <page types>"``) and ``--redo`` fills them in once an extractor reads them. A
+report with no readable price page waits. A report that can't be read is marked ``failed``
+in the manifest with the reason, never dropped.
 """
 
 from __future__ import annotations
@@ -90,11 +92,6 @@ def table_path(entry: Entry) -> str:
     )
 
 
-def supported(page_types: Sequence[str]) -> bool:
-    """Every price page has an extractor (reports with no price page are supported: they fail)."""
-    return all(t in EXTRACTORS for t in page_types if t in classify.PRICE_TYPES)
-
-
 def markets_covered(lines: Sequence[str]) -> int | None:
     """How many markets the footnote's list of covered markets names, if it has one.
 
@@ -121,8 +118,9 @@ def markets_covered(lines: Sequence[str]) -> int | None:
 
 def extract_pdf(
     pages: Sequence[Page], classes: Sequence[classify.PageClass], entry: Entry, now: datetime
-) -> list[dict]:
-    """Bronze rows (as dicts in ``SCHEMA`` order) for one report, or ``ExtractError``."""
+) -> tuple[list[dict], list[str]]:
+    """Bronze rows (as dicts in ``SCHEMA`` order) for one report and the price page types left
+    unread, or ``ExtractError``, or ``Unsupported`` if no price page type can be read yet."""
     types = [c.page_type for c in classes]
     if classify.UNKNOWN in types:
         raise ExtractError(f"unknown page {types.index(classify.UNKNOWN) + 1}")
@@ -134,6 +132,7 @@ def extract_pdf(
     markets = markets_covered(
         [line for p in pages[-2:] for line in (p.extract_text() or "").splitlines()]
     )
+    unread = {t for t in types if t in classify.PRICE_TYPES and t not in EXTRACTORS}
     rows: list[dict] = []
     for page_type, extractor in EXTRACTORS.items():
         numbered = [
@@ -143,7 +142,12 @@ def extract_pdf(
         ]
         if not numbered:
             continue
-        items = extractor.extract(numbered)
+        try:
+            items = extractor.extract(numbered)
+        except Unsupported as exc:
+            logger.debug("Not read yet in %s: %s", entry.file_name, exc)
+            unread.add(page_type)
+            continue
         empty = sorted({n for n, _ in numbered} - {n for n, _ in items})
         if empty:
             raise ExtractError(f"no rows on page {empty[0]} ({page_type})")
@@ -162,18 +166,18 @@ def extract_pdf(
             }
             for number, item in items
         ]
-    return sorted(rows, key=lambda row: row["page"])  # stable: keeps the order within a page
+    if not rows:
+        raise Unsupported(f"no readable price pages ({', '.join(sorted(unread))})")
+    # stable sort: keeps the order within a page
+    return sorted(rows, key=lambda row: row["page"]), sorted(unread)
 
 
 def extract_one(entry: Entry, storage: Storage, now: datetime) -> Entry | None:
-    """Extract one downloaded report. None if its page types or layouts aren't all supported
-    yet."""
+    """Extract one downloaded report. None if none of its price page types can be read yet."""
     try:
         with pdfplumber.open(io.BytesIO(storage.read_bytes(entry.lake_path))) as pdf:
             classes = classify.classify_document([classify.page_text(p) for p in pdf.pages])
-            if not supported([c.page_type for c in classes]):
-                return None
-            rows = extract_pdf(pdf.pages, classes, entry, now)
+            rows, unread = extract_pdf(pdf.pages, classes, entry, now)
     except Unsupported as exc:
         logger.debug("Waiting: %s (%s)", entry.file_name, exc)
         return None
@@ -184,7 +188,8 @@ def extract_one(entry: Entry, storage: Storage, now: datetime) -> Entry | None:
         logger.warning("Extract failed for %s: %r", entry.file_name, exc)
         return replace(entry, status=FAILED, status_reason=f"extract: {exc!r}")
     storage.write_parquet(table_path(entry), pa.Table.from_pylist(rows, schema=SCHEMA), SCHEMA)
-    return replace(entry, status=EXTRACTED, status_reason=None)
+    reason = f"partial: {', '.join(unread)}" if unread else None
+    return replace(entry, status=EXTRACTED, status_reason=reason)
 
 
 def extract_pending(
@@ -209,20 +214,22 @@ def extract_pending(
     if limit is not None:
         pending = pending[:limit]
     logger.info("%d reports to extract", len(pending))
-    counts = {EXTRACTED: 0, FAILED: 0, "waiting": 0}
+    counts = {EXTRACTED: 0, "partial": 0, FAILED: 0, "waiting": 0}
     for number, entry in enumerate(pending, start=1):
         updated = extract_one(entry, storage, datetime.now(UTC))
         if updated is None:
             counts["waiting"] += 1
             continue
         counts[updated.status] += 1
+        counts["partial"] += (updated.status_reason or "").startswith("partial:")
         current[entry.source_url] = updated
         manifest.save(storage, list(current.values()))
         if number % 50 == 0:
             logger.info("Extracted %d of %d", number, len(pending))
     logger.info(
-        "Extract done: %d extracted, %d failed, %d waiting for an extractor",
+        "Extract done: %d extracted (%d partial), %d failed, %d waiting for an extractor",
         counts[EXTRACTED],
+        counts["partial"],
         counts[FAILED],
         counts["waiting"],
     )
