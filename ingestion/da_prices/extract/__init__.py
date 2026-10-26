@@ -26,7 +26,13 @@ from ingestion.common import manifest
 from ingestion.common.manifest import DOWNLOADED, EXTRACTED, FAILED, Entry
 from ingestion.common.storage import Storage
 from ingestion.da_prices import classify
-from ingestion.da_prices.extract import daily_index, market_range, ncr_range, weekly_avg
+from ingestion.da_prices.extract import (
+    by_market,
+    daily_index,
+    market_range,
+    ncr_range,
+    weekly_avg,
+)
 from ingestion.da_prices.extract.items import Item, Unsupported
 
 logger = logging.getLogger(__name__)
@@ -69,6 +75,8 @@ EXTRACTORS: dict[str, Extractor] = {
     classify.WEEKLY_AVG: Extractor("1", weekly_avg.extract),
     classify.MARKET_RANGE: Extractor("1", market_range.extract),
     classify.NCR_RANGE: Extractor("1", ncr_range.extract),
+    classify.PORK_BY_MARKET: Extractor("1", by_market.extract),
+    classify.CHICKEN_BY_MARKET: Extractor("1", by_market.extract),
 }
 
 

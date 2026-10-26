@@ -85,7 +85,7 @@ Skipped page types: `infographic`, `stall_count`, `notes`, `image_only`, `unread
 
 ## Daily range reports: `market_range` and `ncr_range` (checked 2026-10-26 on all 1,900 `price_monitoring` files)
 
-`ingestion/da_prices/extract/market_range.py` and `ncr_range.py` read the daily report packets from **Jan 16, 2025 on**: 553 reports, 296,142 bronze rows (248,451 per market, 47,691 NCR-wide). The same packets from Dec 2022 to Jan 2025 have NCR posters instead of tables (below); 314 of them also have `pork_by_market` / `chicken_by_market` pages not read yet, so they land as partial reports. A report lands once any of its price page types can be read; the unread types are listed in the manifest (`status_reason = "partial: ncr_range"`) and `extract-da --redo` fills them in later. 46 late-2021 reports wait (posters on both page types, so nothing is readable).
+`ingestion/da_prices/extract/market_range.py` and `ncr_range.py` read the daily report packets from **Jan 16, 2025 on**: 553 reports, 296,142 bronze rows (248,451 per market, 47,691 NCR-wide). The same packets from Dec 2022 to Jan 2025 have NCR posters instead of tables (below), and until Apr 2024 pork and chicken pages by market (below). A report lands once any of its price page types can be read; the unread types are listed in the manifest (`status_reason = "partial: ncr_range"`) and `extract-da --redo` fills them in later. 46 late-2021 reports wait (posters on both page types, so nothing is readable).
 
 **pdfplumber's tables and words can't be trusted on these pages.** Below the header, rows often lose their cell borders and land in one cell, sometimes two markets in one cell. pdfplumber also glues neighbouring cells into one word (`100.00100.00`, `NOT AVAILABLE160.00`). Characters inside a word sit 0.0–0.1 pt apart, separate words at least 1.1 pt, so both extractors place single characters into columns and only then join them into text, with a space at every gap over 0.5 pt (`extract/layout.py`).
 
@@ -121,3 +121,14 @@ Skipped page types: `infographic`, `stall_count`, `notes`, `image_only`, `unread
 - **Footnote marks** stay raw on both sides: in names (`Alumahan b`, `Large)d`) and in prices (`250.00*`, `**35.00`, `100*`, `90.00g`). Missing glyphs show as `(cid:10)` (`IMPORTED C(cid:10)OMMERCIAL RICE`).
 - **Hidden text.** Some 2024 pages carry stray words behind the panels (`Glutinous`, `Japanese` near the corn rows); they join the nearest name (`Corn (White)\nGlutinous`).
 - **Not read:** the title and date above the panels, DA's contact block at the top right (phone, email, address), and the footnote.
+
+### Pork and chicken by market (`pork_by_market`, `chicken_by_market`, Dec 28, 2022 → Apr 18, 2024; checked on all 942 pages of 314 reports)
+
+One commodity per page: two pork pages (`FRESH & FROZEN PORK KASIM/PIGUE`, `… LIEMPO`) and one chicken page (`FRESH WHOLE CHICKEN`). Under `PRICE PER KILOGRAM (P/kg)` the header row starts with `MARKET` and names the columns: `Fresh` | `Frozen` for pork, `Fully-dressed, whole chicken` for chicken. The body reads like a `market_range` page, so `by_market.py` reuses that reader; the page heading becomes `commodity_raw` and the column header `specification_raw`. 36,730 rows, 13 to 35 markets per page.
+
+- **Row numbers.** Markets are a numbered list (`1 New Las Piñas City Public Market`); the number is dropped so names match the `market_range` pages. A lone `#` (the number column's header, misplaced) under the last row of some 2024 pages gives no row.
+- **Off-page text.** Seven pages carry another page's heading beyond the right edge of the page (`FRESH WHOLE CHICKEN` next to `… LIEMPO`). The table box ends inside the page, so it is left out.
+- **Cells** are ranges (`320.00 - 340.00`, sometimes without the dash) or one marker in `price_prevailing_raw`: `N/A` (7,274), `n/m` / `N/M` (1,228, probably "not monitored"), `n/A`, `n/a`. Old-style `0.00` means missing (Jan 2023).
+- **DA typos kept raw:** `3,700.00` for `370.00` (Dec 30, 2022), `N/A q`, and `0.00n/m0.00` (Dec 8, 2023).
+- **Not read yet (Sep 2021 → Dec 27, 2022):** "Prevailing Retail Prices of …" pages (765). Same table, but each column splits into `Today` and `Last Friday` / `This Monday`, so its two values are today's and the last report's price, not a range; `(-)` marks a missing price. Pages whose title doesn't start with `Retail Price Range` raise `Unsupported`.
+- **Misclassified:** on some late-2022 pages (Nov 28, 2022) the previous page's title sits off the left edge and comes first, so a chicken page is typed `pork_by_market`. Only these prevailing pages are affected so far.
