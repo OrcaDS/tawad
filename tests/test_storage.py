@@ -1,5 +1,7 @@
 """Tests for the local storage backend."""
 
+import os
+import time
 from pathlib import Path
 
 import pyarrow as pa
@@ -100,6 +102,32 @@ def test_failed_write_cleans_up_and_keeps_old_file(storage: LocalStorage, lake: 
     with pytest.raises(OSError):
         storage._atomic_write("bronze/files/a.pdf", boom)
     assert storage.read_bytes("bronze/files/a.pdf") == b"old"
+    assert not list(lake.rglob(f"{TMP_PREFIX}*"))
+
+
+def test_replace_retries_while_windows_holds_the_file(
+    storage: LocalStorage, lake: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    replace, calls = os.replace, []
+
+    def locked_once(src: Path, dst: Path) -> None:
+        calls.append(dst)
+        if len(calls) == 1:
+            raise PermissionError(5, "Access is denied")
+        replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", locked_once)
+    monkeypatch.setattr(time, "sleep", lambda _: None)
+    storage.write_bytes("bronze/files/a.pdf", b"new")
+    assert storage.read_bytes("bronze/files/a.pdf") == b"new"
+    assert len(calls) == 2
+
+    def always_locked(src: Path, dst: Path) -> None:
+        raise PermissionError(5, "Access is denied")
+
+    monkeypatch.setattr(os, "replace", always_locked)
+    with pytest.raises(PermissionError):  # still locked after the last retry
+        storage.write_bytes("bronze/files/b.pdf", b"x")
     assert not list(lake.rglob(f"{TMP_PREFIX}*"))
 
 

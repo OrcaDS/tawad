@@ -70,3 +70,15 @@ Skipped page types: `infographic`, `stall_count`, `notes`, `image_only`, `unread
 - **Categories carry over page breaks.** A page often starts mid-category.
 - **Price cells that aren't prices** (kept raw; silver makes them NULL): `#DIV/0!` (66 rows, an Excel error in DA's sheet), `n/a!`, `n/as`, `+n/a`, `n/a n/a`. One row (July 8, 2026, page 5) has a price and no item name.
 - **Covered markets.** The footnote lists the markets numbered, sometimes in two columns ("Covered market", "Covered markets:", "Covered wet markets and supermarkets:"). `markets_covered` is the highest number in that list. It ranges from 4 to 36: **weekend reports cover far fewer markets** (5 to 7 on Sundays in May 2025), and April 2025 includes supermarkets.
+
+## Weekly Average Price tables (checked 2026-10-26 on all 163 files)
+
+`ingestion/da_prices/extract/weekly_avg.py` reads the 64 weekly reports that have a text layer (late Dec 2023 → now) into 5,503 bronze rows (57 to 100 items per report). The other 99 are image-only. Every page gives rows, every row gets a category, and every report gets a market count.
+
+- **One header for the whole report.** Only page 1 has `COMMODITY | SPECIFICATION | UNIT | WEEKLY AVERAGE PRICE`, with an empty cell in front. Later tables (the rest of page 1 in some 2024 files, and pages 2 and 3) have no header. They either keep that empty first cell or drop it (2026 page 3), so they are read with the page-1 columns aligned from the right. The 3 files whose header reads `WEEKLY AVERAGE\nPRICE` give the same `layout`.
+- **Explicit units.** `kg`, `pc` (eggs), `ml` and `L` (cooking oil).
+- **Missing prices.** `-` means not sold (mostly 2025 on), `n/a` not available (mostly 2023–2024). Both are kept raw. Odd price cells: `#DIV/0!` (5 rows, Sept 2026) and an asterisk on brown eggs (`8.00*`, July–Aug 2024).
+- **Categories** are one ALL-CAPS cell (`KADIWA RICE-FOR-ALL`, `IMPORTED COMMERCIAL RICE`, `BEEF PRODUCTS` …). Names change over time (`FISH` / `FISH PRODUCTS`, `CORN` / `CORN PRODUCTS`, `PORK AND BEEF PRODUCTS` / `BEEF AND PORK PRODUCTS`), and pork still sits under `BEEF PRODUCTS`, so silver takes categories from `commodity_map.csv`. Twice DA left a stray `x` in the unlabeled first cell of a category row, so that cell is ignored.
+- **Wrapped text** stays inside one cell (`Medium (301-450 cm diameter/bunch\nhd)`). No row continues the one above. One row (Dec 8–13, 2025) has a price and no item name; it is kept.
+- **Covered markets** are one paragraph, not a numbered list: `Markets Covered (29): Agora, Bicutan, …, Taguig & Trabajo` (2024, with the count) or `Markets Covered: … and Trabajo Market` (without it). `markets_covered` takes the stated count, or else counts the names between commas, "and" and "&". Where both exist they agree in all 18 files. The count ranges from 25 to 36.
+- **Superscript markers** stay in names (`P20 Benteng Bigas Meron Naᵃ`); the footnote explains them ("available only in 5 markets").

@@ -24,7 +24,7 @@ from ingestion.common import manifest
 from ingestion.common.manifest import DOWNLOADED, EXTRACTED, FAILED, Entry
 from ingestion.common.storage import Storage
 from ingestion.da_prices import classify
-from ingestion.da_prices.extract import daily_index
+from ingestion.da_prices.extract import daily_index, weekly_avg
 from ingestion.da_prices.extract.items import Item
 
 logger = logging.getLogger(__name__)
@@ -64,11 +64,16 @@ class Extractor:
 
 EXTRACTORS: dict[str, Extractor] = {
     classify.DAILY_INDEX: Extractor("1", daily_index.extract),
+    classify.WEEKLY_AVG: Extractor("1", weekly_avg.extract),
 }
 
 
 _COVERED = re.compile(r"covered\b.*\bmarkets?\b", re.IGNORECASE)  # "Covered wet markets and …"
 _LIST_NUMBER = re.compile(r"(?<!\S)(\d{1,3})\. (?=\S)")  # "12. Malabon Central Market"
+# Weekly reports: "Markets Covered (29): Agora, Bicutan, …, Taguig & Trabajo" (count optional)
+_COVERED_LIST = re.compile(r"^markets covered(?: \((\d+)\))?:(.*)", re.IGNORECASE)
+_LIST_END = re.compile(r"^(source|notes?)\b", re.IGNORECASE)
+_LIST_SEPARATOR = re.compile(r",\s*(?:and\s+)?|\s+(?:and|&)\s+")
 
 
 class ExtractError(Exception):
@@ -89,7 +94,22 @@ def supported(page_types: Sequence[str]) -> bool:
 
 
 def markets_covered(lines: Sequence[str]) -> int | None:
-    """How many markets the footnote's numbered "Covered market(s)" list names, if it has one."""
+    """How many markets the footnote's list of covered markets names, if it has one.
+
+    Daily reports number the list ("Covered markets:" then "1. …"); weekly reports run it on
+    in one paragraph ("Markets Covered (29): A, B, … and Z"), with or without the count.
+    """
+    for i, line in enumerate(lines):
+        if match := _COVERED_LIST.match(line.strip()):
+            if match[1]:
+                return int(match[1])
+            rest = [match[2]]
+            for more in lines[i + 1 :]:
+                if _LIST_END.match(more.strip()):
+                    break
+                rest.append(more)
+            names = [name for name in _LIST_SEPARATOR.split(" ".join(rest)) if name.strip(" .")]
+            return len(names) or None
     start = next((i for i, line in enumerate(lines) if _COVERED.search(line)), None)
     if start is None:
         return None

@@ -1,4 +1,4 @@
-"""Tests for the extract runner, on two-page cuts of real DPI reports in tests/fixtures/pdfs/."""
+"""Tests for the extract runner, on cuts of real DPI and weekly reports in tests/fixtures/pdfs/."""
 
 from dataclasses import replace
 from datetime import UTC, date, datetime
@@ -9,7 +9,7 @@ import pytest
 from ingestion.common import manifest
 from ingestion.common.manifest import DOWNLOADED, EXTRACTED, FAILED, Entry
 from ingestion.common.storage import LocalStorage
-from ingestion.da_prices.discover import DAILY_INDEX, PRICE_MONITORING
+from ingestion.da_prices.discover import DAILY_INDEX, PRICE_MONITORING, WEEKLY_AVG
 from ingestion.da_prices.extract import SCHEMA, extract_pending, table_path
 
 FIXTURES = Path(__file__).parent / "fixtures" / "pdfs"
@@ -75,6 +75,29 @@ def test_numbered_2025_layout(storage: LocalStorage) -> None:
         "FRUITS",
         "114.00",
     )
+
+
+def test_weekly_report_across_three_pages(storage: LocalStorage) -> None:
+    entry = _entry(storage, "weekly_2026-10-11_p1-3.pdf", date(2026, 10, 11), WEEKLY_AVG)
+    (result,) = extract_pending(storage, [entry])
+    assert result.status == EXTRACTED
+    rows = storage.read_parquet(table_path(entry)).to_pylist()
+    assert len(rows) == 100
+    assert {r["page"] for r in rows} == {1, 2, 3}
+    assert {r["markets_covered"] for r in rows} == {36}
+    assert {r["extractor_version"] for r in rows} == {"weekly_avg/1"}
+    oil = rows[-1]  # page 3's table has no header and one cell fewer
+    assert (oil["page"], oil["category_header_raw"], oil["commodity_raw"]) == (
+        3,
+        "OTHER BASIC COMMODITIES",
+        "Cooking Oil (Coconut)",
+    )
+    assert (oil["specification_raw"], oil["unit_raw"], oil["price_average_raw"]) == (
+        "1 Liter/bottle",
+        "L",
+        "153.91",
+    )
+    assert any(r["price_average_raw"] == "-" for r in rows)  # raw, not NULL
 
 
 def test_a_broken_pdf_fails_without_stopping_the_run(storage: LocalStorage) -> None:
