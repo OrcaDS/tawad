@@ -1,0 +1,96 @@
+"""Tests for the extract runner, on two-page cuts of real DPI reports in tests/fixtures/pdfs/."""
+
+from dataclasses import replace
+from datetime import UTC, date, datetime
+from pathlib import Path
+
+import pytest
+
+from ingestion.common import manifest
+from ingestion.common.manifest import DOWNLOADED, EXTRACTED, FAILED, Entry
+from ingestion.common.storage import LocalStorage
+from ingestion.da_prices.discover import DAILY_INDEX, PRICE_MONITORING
+from ingestion.da_prices.extract import SCHEMA, extract_pending, table_path
+
+FIXTURES = Path(__file__).parent / "fixtures" / "pdfs"
+T0 = datetime(2026, 10, 24, tzinfo=UTC)
+
+
+@pytest.fixture
+def storage(tmp_path: Path) -> LocalStorage:
+    return LocalStorage(tmp_path / "lake")
+
+
+def _entry(storage: LocalStorage, fixture: str, day: date, series: str = DAILY_INDEX) -> Entry:
+    entry = Entry(
+        source_url=f"https://www.da.gov.ph/wp-content/uploads/{fixture}",
+        file_name=fixture,
+        section="Daily Price Index",
+        link_text=f"{day:%B %d, %Y}",
+        series=series,
+        report_date=day,
+        period_start=None,
+        date_check="agree",
+        revision_level=0,
+        revision_rank=0,
+        on_page=True,
+        first_seen_at=T0,
+        status=DOWNLOADED,
+    )
+    entry = replace(entry, lake_path=manifest.bronze_file_path(entry))
+    storage.write_bytes(entry.lake_path, (FIXTURES / fixture).read_bytes())
+    return entry
+
+
+def test_extracts_rows_with_lineage_and_updates_the_manifest(storage: LocalStorage) -> None:
+    entry = _entry(storage, "dpi_2026-10-24_p7-8.pdf", date(2026, 10, 24))
+    (result,) = extract_pending(storage, [entry])
+    assert result.status == EXTRACTED
+    assert manifest.load(storage)[0].status == EXTRACTED
+
+    table = storage.read_parquet(table_path(entry))
+    assert table.schema.equals(SCHEMA)
+    assert table_path(entry) == (
+        "bronze/tables/da_prices/year=2026/month=10/part-daily_index-2026-10-24-r0.parquet"
+    )
+    rows = table.to_pylist()
+    assert {r["page"] for r in rows} == {1, 2}
+    assert {r["markets_covered"] for r in rows} == {33}
+    assert {r["extractor_version"] for r in rows} == {"daily_index/1"}
+    sugar = next(r for r in rows if r["commodity_raw"] == "Sugar (Refined)")
+    # page 2 continues the category that page 1 started
+    assert (sugar["page"], sugar["category_header_raw"]) == (2, "OTHER BASIC COMMODITIES")
+    assert sugar["price_prevailing_raw"] == "81.01"
+    assert sugar["market_raw"] is None
+    assert any(r["price_prevailing_raw"] == "n/a" for r in rows)  # raw, not NULL
+
+
+def test_numbered_2025_layout(storage: LocalStorage) -> None:
+    entry = _entry(storage, "dpi_2025-05-11_p6-7.pdf", date(2025, 5, 11))
+    extract_pending(storage, [entry])
+    rows = storage.read_parquet(table_path(entry)).to_pylist()
+    assert {r["markets_covered"] for r in rows} == {5}  # Sundays cover fewer markets
+    calamansi = next(r for r in rows if r["commodity_raw"] == "Calamansi")
+    assert (calamansi["category_header_raw"], calamansi["price_prevailing_raw"]) == (
+        "FRUITS",
+        "114.00",
+    )
+
+
+def test_a_broken_pdf_fails_without_stopping_the_run(storage: LocalStorage) -> None:
+    good = _entry(storage, "dpi_2026-10-24_p7-8.pdf", date(2026, 10, 24))
+    broken = _entry(storage, "dpi_2025-05-11_p6-7.pdf", date(2025, 5, 11), PRICE_MONITORING)
+    storage.write_bytes(broken.lake_path, b"%PDF-1.4 truncated")
+    result = {e.series: e for e in extract_pending(storage, [broken, good])}
+    assert result[PRICE_MONITORING].status == FAILED
+    assert result[PRICE_MONITORING].status_reason.startswith("extract: ")
+    assert result[DAILY_INDEX].status == EXTRACTED
+
+
+def test_redo_and_series_filter(storage: LocalStorage) -> None:
+    entry = _entry(storage, "dpi_2026-10-24_p7-8.pdf", date(2026, 10, 24))
+    (done,) = extract_pending(storage, [entry])
+    assert extract_pending(storage, [done]) == [done]  # nothing pending
+    assert extract_pending(storage, [entry], series=PRICE_MONITORING) == [entry]
+    (redone,) = extract_pending(storage, [done], redo=True)
+    assert redone.status == EXTRACTED

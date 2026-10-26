@@ -58,3 +58,15 @@ Skipped page types: `infographic`, `stall_count`, `notes`, `image_only`, `unread
 - **123 files are image-only** (no text layer): 99 of the 163 weekly reports (2023-08 → 2026) and 24 daily range reports (mostly 2024–2025). They are clean pictures of the usual tables, so OCR could read them; without OCR they are marked failed with reason `image_only`.
 - **1 file has text with no character map**: `Retail-Price-Monitoring-December-28-2019.pdf` extracts as `(cid:39)(cid:36)…`.
 - Other image-only pages sit inside files that also have text pages (posters, pork maps), so they cost nothing.
+
+## Daily Price Index tables (checked 2026-10-26 on all 595 files)
+
+`ingestion/da_prices/extract/daily_index.py` reads every DPI report into about 113,000 bronze rows (80 to 210 items per report). Every page gives rows, every row gets a category, and every report gets a market count.
+
+- **Header variants.** `COMMODITY | SPECIFICATION | [UNIT |] PREVAILING RETAIL PRICE …`, wrapped differently over time. Sept 2025 splits the price header over two table rows (`RETAIL PRICE` / `PER UNIT (P/UNIT)`). July 25, 2025 ("Annex A") leaves the COMMODITY header blank. Columns are mapped by header text; `layout` records the header as read.
+- **Split cells (2025).** pdfplumber splits each column into several cells (12 cells for 4 columns), and text can sit in any of them. A column is every cell from its header to the next header.
+- **Row numbers and category letters (mid-2025).** Rows are numbered (`1`, `2` …) and categories lettered (`A IMPORTED COMMERCIAL RICE`) in cells of their own. They are dropped. In 81 rows DA typed `n/a` into the row-number cell, so `commodity_raw` reads `n/a\nImported Beef Forequarter`; silver strips the leading `n/a`.
+- **Wrapped text.** Long names and specifications (2025 beef and pork cut descriptions run 5 to 8 lines) sometimes continue in a row of their own with no price, also across page breaks. DPI always writes a missing price as `n/a`, so a row with no price text is joined to the item above with a newline. Category names wrap the same way (`LIVESTOCK & POULTRY` / `PRODUCTS`).
+- **Categories carry over page breaks.** A page often starts mid-category.
+- **Price cells that aren't prices** (kept raw; silver makes them NULL): `#DIV/0!` (66 rows, an Excel error in DA's sheet), `n/a!`, `n/as`, `+n/a`, `n/a n/a`. One row (July 8, 2026, page 5) has a price and no item name.
+- **Covered markets.** The footnote lists the markets numbered, sometimes in two columns ("Covered market", "Covered markets:", "Covered wet markets and supermarkets:"). `markets_covered` is the highest number in that list. It ranges from 4 to 36: **weekend reports cover far fewer markets** (5 to 7 on Sundays in May 2025), and April 2025 includes supermarkets.

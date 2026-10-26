@@ -16,7 +16,7 @@ from datetime import UTC, date, datetime
 from config.settings import Settings, load_settings
 from ingestion.common import manifest
 from ingestion.common.storage import get_storage
-from ingestion.da_prices import discover, download
+from ingestion.da_prices import discover, download, extract
 
 logger = logging.getLogger("tawad")
 
@@ -62,6 +62,15 @@ def _ingest_da(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def _extract_da(args: argparse.Namespace, settings: Settings) -> int:
+    """Extract downloaded DA reports into bronze rows (no network)."""
+    storage = get_storage(settings)
+    extract.extract_pending(
+        storage, manifest.load(storage), series=args.series, redo=args.redo, limit=args.limit
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tawad", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -78,6 +87,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--discover-only", action="store_true", help="Update the manifest without downloading"
     )
     da.set_defaults(handler=_ingest_da)
+    ex = sub.add_parser("extract-da", help="Extract downloaded DA reports into bronze rows")
+    ex.add_argument("--series", choices=discover.SERIES, help="Only this report series")
+    ex.add_argument("--redo", action="store_true", help="Also redo extracted and failed reports")
+    ex.add_argument("--limit", metavar="N", type=_positive, help="Extract at most N reports")
+    ex.set_defaults(handler=_extract_da)
     sub.add_parser("ingest-primary", help="Pull my Google Form responses").set_defaults(
         handler=_not_yet(6)
     )
