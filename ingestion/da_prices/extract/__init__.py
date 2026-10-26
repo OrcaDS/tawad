@@ -2,9 +2,9 @@
 
 Every page is classified (``classify.py``) and handed to the extractor for its page type. Rows
 keep cell text exactly as pdfplumber reads it; typing and cleaning happen in silver. A report
-is extracted only when every price page in it has an extractor, so a partly supported report
-waits rather than landing half-read. A report that can't be read is marked ``failed`` in the
-manifest with the reason, never dropped.
+is extracted only when every price page in it has an extractor that can read its layout, so
+a partly supported report waits rather than landing half-read. A report that can't be read
+is marked ``failed`` in the manifest with the reason, never dropped.
 """
 
 from __future__ import annotations
@@ -24,8 +24,8 @@ from ingestion.common import manifest
 from ingestion.common.manifest import DOWNLOADED, EXTRACTED, FAILED, Entry
 from ingestion.common.storage import Storage
 from ingestion.da_prices import classify
-from ingestion.da_prices.extract import daily_index, weekly_avg
-from ingestion.da_prices.extract.items import Item
+from ingestion.da_prices.extract import daily_index, market_range, ncr_range, weekly_avg
+from ingestion.da_prices.extract.items import Item, Unsupported
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +65,8 @@ class Extractor:
 EXTRACTORS: dict[str, Extractor] = {
     classify.DAILY_INDEX: Extractor("1", daily_index.extract),
     classify.WEEKLY_AVG: Extractor("1", weekly_avg.extract),
+    classify.MARKET_RANGE: Extractor("1", market_range.extract),
+    classify.NCR_RANGE: Extractor("1", ncr_range.extract),
 }
 
 
@@ -164,13 +166,17 @@ def extract_pdf(
 
 
 def extract_one(entry: Entry, storage: Storage, now: datetime) -> Entry | None:
-    """Extract one downloaded report. None if its page types aren't all supported yet."""
+    """Extract one downloaded report. None if its page types or layouts aren't all supported
+    yet."""
     try:
         with pdfplumber.open(io.BytesIO(storage.read_bytes(entry.lake_path))) as pdf:
             classes = classify.classify_document([classify.page_text(p) for p in pdf.pages])
             if not supported([c.page_type for c in classes]):
                 return None
             rows = extract_pdf(pdf.pages, classes, entry, now)
+    except Unsupported as exc:
+        logger.debug("Waiting: %s (%s)", entry.file_name, exc)
+        return None
     except ExtractError as exc:
         logger.warning("Extract failed for %s: %s", entry.file_name, exc)
         return replace(entry, status=FAILED, status_reason=str(exc))

@@ -10,7 +10,8 @@ from ingestion.common import manifest
 from ingestion.common.manifest import DOWNLOADED, EXTRACTED, FAILED, Entry
 from ingestion.common.storage import LocalStorage
 from ingestion.da_prices.discover import DAILY_INDEX, PRICE_MONITORING, WEEKLY_AVG
-from ingestion.da_prices.extract import SCHEMA, extract_pending, table_path
+from ingestion.da_prices.extract import EXTRACTORS, SCHEMA, Extractor, extract_pending, table_path
+from ingestion.da_prices.extract.items import Unsupported
 
 FIXTURES = Path(__file__).parent / "fixtures" / "pdfs"
 T0 = datetime(2026, 10, 24, tzinfo=UTC)
@@ -75,6 +76,42 @@ def test_numbered_2025_layout(storage: LocalStorage) -> None:
         "FRUITS",
         "114.00",
     )
+
+
+def test_price_monitoring_market_and_ncr_pages(storage: LocalStorage) -> None:
+    entry = _entry(storage, "pm_2026-10-01_p3-4.pdf", date(2026, 10, 1), PRICE_MONITORING)
+    (result,) = extract_pending(storage, [entry])
+    assert result.status == EXTRACTED
+    rows = storage.read_parquet(table_path(entry)).to_pylist()
+    assert {(r["page"], r["page_type"]) for r in rows} == {(1, "market_range"), (2, "ncr_range")}
+    chili = next(
+        r
+        for r in rows
+        if r["market_raw"] == "Bicutan Market" and r["commodity_raw"] == "Chili (Green)"
+    )
+    assert chili["price_prevailing_raw"] == "180.00"
+    basmati = next(r for r in rows if r["commodity_raw"] == "Basmati")
+    assert basmati["market_raw"] is None
+    assert basmati["category_header_raw"] == "IMPORTED COMMERCIAL RICE"
+    assert [basmati[f"price_{f}_raw"] for f in ("low", "high", "prevailing", "average")] == [
+        "150.00",
+        "250.00",
+        "150.00",
+        "188.75",
+    ]
+
+
+def test_unsupported_layout_leaves_the_report_waiting(
+    storage: LocalStorage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def poster(pages):
+        raise Unsupported("2023 poster")
+
+    monkeypatch.setitem(EXTRACTORS, "ncr_range", Extractor("1", poster))
+    entry = _entry(storage, "pm_2026-10-01_p3-4.pdf", date(2026, 10, 1), PRICE_MONITORING)
+    (result,) = extract_pending(storage, [entry])
+    assert result.status == DOWNLOADED
+    assert not storage.exists(table_path(entry))
 
 
 def test_weekly_report_across_three_pages(storage: LocalStorage) -> None:

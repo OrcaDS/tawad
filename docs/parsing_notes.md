@@ -82,3 +82,32 @@ Skipped page types: `infographic`, `stall_count`, `notes`, `image_only`, `unread
 - **Wrapped text** stays inside one cell (`Medium (301-450 cm diameter/bunch\nhd)`). No row continues the one above. One row (Dec 8–13, 2025) has a price and no item name; it is kept.
 - **Covered markets** are one paragraph, not a numbered list: `Markets Covered (29): Agora, Bicutan, …, Taguig & Trabajo` (2024, with the count) or `Markets Covered: … and Trabajo Market` (without it). `markets_covered` takes the stated count, or else counts the names between commas, "and" and "&". Where both exist they agree in all 18 files. The count ranges from 25 to 36.
 - **Superscript markers** stay in names (`P20 Benteng Bigas Meron Naᵃ`); the footnote explains them ("available only in 5 markets").
+
+## Daily range reports: `market_range` and `ncr_range` (checked 2026-10-26 on all 1,900 `price_monitoring` files)
+
+`ingestion/da_prices/extract/market_range.py` and `ncr_range.py` read the daily report packets from **Jan 16, 2025 on**: 553 reports, 296,142 bronze rows (248,451 per market, 47,691 NCR-wide). The same packets from Dec 2022 to Jan 2025 wait: their `market_range` pages read fine, but their `ncr_range` pages are posters (below), and a report lands only when every price page in it can be read. 46 late-2021 reports also wait (posters on both page types).
+
+**pdfplumber's tables and words can't be trusted on these pages.** Below the header, rows often lose their cell borders and land in one cell, sometimes two markets in one cell. pdfplumber also glues neighbouring cells into one word (`100.00100.00`, `NOT AVAILABLE160.00`). Characters inside a word sit 0.0–0.1 pt apart, separate words at least 1.1 pt, so both extractors place single characters into columns and only then join them into text, with a space at every gap over 0.5 pt (`extract/layout.py`).
+
+### Per market (`market_range`, Dec 2022 → now)
+
+- **Header.** The row starting with `MARKET` (after an empty column in some files) names one commodity per column, under `COMMODITY (PHP/KG)`. Each commodity's column runs from its header cell to the next one; only these header boxes come from pdfplumber's table. Header text is kept as pdfplumber reads it, including line breaks and a few garbled names where two lines overlap (`(WCohirtne)` for `Corn (White)`).
+- **Cells.** Until 2025: ranges (`40.00 -44.00`, `150.00-150.00`, sometimes no dash: `360.00 360.00`) or one value when low and high agree. 2026: single prevailing prices. A two-part cell is split into `price_low_raw` / `price_high_raw`; anything else goes to `price_prevailing_raw`.
+- **Wrapped cells.** `NOT` / `AVAILABLE` can wrap onto a line of its own, above or below the market's line. Such a line has no market name and joins the nearest market's line.
+- **Footnote inside the table box** (`Source: …`, Aug 19, 2025) ends the table.
+- **DA typos kept raw:** `NOT AVAILABKE`, `NOT AVAILBLE`, `NOT AVAILANBLE`, `NOT AVAILABLE]`, and `#####` (an Excel column too narrow, Feb 2024).
+- **Markets per page** range from 10 to 36: the number of markets grew from 13 (2023) to about 30–36 (2025–2026). 45 market names appear, with renames (`Mandaluyong Public Market` → `… I` and `… II`).
+- **Not read yet (2021-09 → 2022-12):** posters (no `MARKET` header) and grids whose last header cell names several commodities (`Pechay Red Onion Sugar\n*Egg (Medium) …`). These pages raise `Unsupported` and their reports wait.
+
+### NCR ranges (`ncr_range`, Jan 16, 2025 → now)
+
+- **Two tables per page**, side by side, each under `COMMODITIES LOW HIGH [PREVAILING] AVERAGE` (`PREVALING` in some files, a point above the line; PREVAILING appears from Feb 2025). A table can restart lower down with a new header, and since Dec 2025 pages have up to four headers. Once (Nov 17, 2025) the header reads `HIGHPREVALING` as one word; it is split in proportion to its letters.
+- **Rows** are clusters of price words at about the same height. Names are centred in their cells and often wrap onto two lines around the prices, so each name line joins the nearest row (`Imported Round Scad\n(Galunggong)`).
+- **Merged LOW–HIGH cells.** When low equals high, DA writes one value centred across both columns; it fills both fields.
+- **Separators.** The range dash is either glued to the low price (`160.00-`) or a word of its own between LOW and HIGH; it is dropped.
+- **Categories.** ALL-CAPS name lines without prices (`KADIWA RICE-FOR-ALL`, `IMPORTED COMMERCIAL RICE`, `LOCAL COMMERCIAL RICE`) become `category_header_raw` for the rows below. The labels spanning several rows in the far-left column (`RICE (per kg)`, `LIVESTOCK AND POULTRY PRODUCTS`) can't be tied to rows reliably and are not kept; silver takes categories from `commodity_map.csv`. The name column is found as the commonest left edge of the words left of LOW, which keeps those labels out of names.
+- **Footnote markers** stay in names, with or without a space (`Local Garlic (Bawang) b`, `Broccolic`, `Premium (RFA5)ᵃ`).
+- **`NOT AVAILABLE`** spanning a whole row (Jan 2025, 54 rows) is kept in the one column it falls under.
+- **Rows run together.** If a row would get two values for one column, the extractor raises `RowMerge` and the report fails with that reason rather than guessing. This does not happen in any current file.
+- **Not read yet (Dec 2022 → Jan 15, 2025):** "Retail Price Range of Selected Agri-fishery Commodities at NCR Markets" posters: 4–5 boxed panels per page, each `name  low-high` with no column headers, and broken text in 2024 (`R IC E`, `C o rn G r its`). These pages raise `Unsupported`.
+- **Covered markets.** The footnote is a paragraph (`Markets Covered: …`), counted as for weekly reports. One report (Mar 24, 2025) has no list, so its `markets_covered` is NULL.

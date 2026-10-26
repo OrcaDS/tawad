@@ -1,4 +1,5 @@
-"""The row every page extractor returns (raw cell text; the runner adds the report's lineage)."""
+"""What page extractors return: ``Item`` rows (raw cell text; the runner adds the report's
+lineage), or ``Unsupported`` for a layout they can't read yet."""
 
 from __future__ import annotations
 
@@ -17,3 +18,7 @@ class Item:
     price_high_raw: str | None = None
     price_prevailing_raw: str | None = None
     price_average_raw: str | None = None
+
+
+class Unsupported(Exception):
+    """A layout the extractor can't read yet: the report waits instead of failing."""
