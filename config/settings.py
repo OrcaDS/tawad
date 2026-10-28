@@ -12,14 +12,11 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-VALID_STORAGE_BACKENDS = ("local", "gcs", "r2")
 DEFAULT_USER_AGENT = "PalengkePriceTracker/0.1 (non-commercial portfolio project)"
 # Every env var load_settings() reads (tests clear these to stay independent of the shell)
 ENV_VARS = (
     "LOG_LEVEL",
-    "STORAGE_BACKEND",
     "LAKE_ROOT",
-    "BUCKET_NAME",
     "DA_PRICE_MONITORING_URL",
     "HTTP_USER_AGENT",
     "REQUEST_DELAY_SECONDS",
@@ -52,9 +49,7 @@ class Settings:
     """Immutable snapshot of all configuration for one pipeline run."""
 
     log_level: str
-    storage_backend: str
     lake_root: Path
-    bucket_name: str
     da_price_monitoring_url: str
     http_user_agent: str
     request_delay_seconds: float
@@ -72,13 +67,6 @@ class Settings:
             raise ValueError(
                 f"LOG_LEVEL must be DEBUG, INFO, WARNING or ERROR, got {self.log_level!r}"
             )
-        if self.storage_backend not in VALID_STORAGE_BACKENDS:
-            raise ValueError(
-                f"STORAGE_BACKEND must be one of {VALID_STORAGE_BACKENDS}, "
-                f"got {self.storage_backend!r}"
-            )
-        if self.storage_backend != "local" and not self.bucket_name:
-            raise ValueError("BUCKET_NAME is required when STORAGE_BACKEND is not 'local'")
         if self.request_delay_seconds < 1:
             raise ValueError("REQUEST_DELAY_SECONDS must be at least 1 (be polite to DA)")
 
@@ -87,9 +75,7 @@ def load_settings() -> Settings:
     """Build Settings from the current environment."""
     return Settings(
         log_level=_env("LOG_LEVEL", "INFO").upper(),
-        storage_backend=_env("STORAGE_BACKEND", "local").lower(),
         lake_root=Path(_env("LAKE_ROOT", "./lake")),
-        bucket_name=_env("BUCKET_NAME", ""),
         da_price_monitoring_url=_env(
             "DA_PRICE_MONITORING_URL", "https://www.da.gov.ph/price-monitoring/"
         ),

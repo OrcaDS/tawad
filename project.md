@@ -38,7 +38,7 @@ It is also a **portfolio project** for data engineering and analytics roles. Cod
         │
         ▼
  ┌──────────────────────────────────────────────────────────────┐
- │  BRONZE  (object storage)                                    │
+ │  BRONZE  (local lake, kept in a GitHub Release)              │
  │  bronze/files/   original PDFs, CSV, JSON (immutable)        │
  │  bronze/tables/  extracted rows as text, + lineage, Parquet  │
  └──────────────────────────────────────────────────────────────┘
@@ -67,8 +67,8 @@ DuckDB is the only compute engine. BigQuery serves the gold layer only, so trans
 | Language | Python 3.11+ | Use `uv` for dependency management |
 | PDF extraction | `pdfplumber` | Recon showed every era is text-based with extractable tables; no OCR, no camelot needed so far |
 | Bronze storage format | Parquet via `pyarrow`, Hive-partitioned | |
-| Object storage | GCS (leaning) or Cloudflare R2 | Decide at milestone 5; ask me before creating anything |
-| Transformations | dbt Core with `dbt-duckdb` | Reads bronze Parquet via DuckDB `httpfs` |
+| Lake storage | Local lake, copied to and from the `lake` GitHub Release (`tawad lake-push` / `lake-pull`) | Decided at milestone 5: GCS and R2 both need a card on file; Releases are free with no card. Daily runs pull only `bronze.tar` (~30 MB); PDFs are one `pdfs-YYYY-MM.tar` per report month |
+| Transformations | dbt Core with `dbt-duckdb` | Reads bronze Parquet from the local lake |
 | Cloud warehouse | BigQuery **sandbox** | Gold only, loaded via load jobs; see §6.7 for sandbox rules |
 | Orchestration | GitHub Actions cron (daily) | Runs the pipeline inside the Docker image |
 | Containers | Docker; image published to GitHub Container Registry (GHCR) | |
@@ -111,7 +111,8 @@ tawad/                            # github.com/OrcaDS/tawad
 │   ├── psa/
 │   │   └── openstat.py           # CPI + retail price tables → bronze
 │   └── common/
-│       ├── storage.py            # read/write abstraction: local dir or bucket
+│       ├── storage.py            # read/write abstraction over the local lake
+│       ├── lake_release.py       # push/pull the lake to the `lake` GitHub Release
 │       └── manifest.py           # file manifest, hashes, revisions, extract status
 ├── warehouse/
 │   ├── export_to_bigquery.py     # gold → Parquet → BigQuery load jobs
@@ -165,7 +166,7 @@ tawad/                            # github.com/OrcaDS/tawad
   ```
 - Writes must be idempotent: re-extracting a report overwrites its own file, never appends duplicates.
 - Define an explicit `pyarrow` schema per dataset (no schema inference). Use snappy compression.
-- `ingestion/common/storage.py` must work against either a local directory or the bucket, switched by env var, so tests and local dev never need cloud credentials.
+- `ingestion/common/storage.py` works on the local lake only, so tests and local dev never need credentials. `ingestion/common/lake_release.py` copies the lake to and from the `lake` GitHub Release (deterministic tars, re-uploaded only when their sha256 changes; every PDF is checked against its manifest hash before upload).
 
 ### 6.3 Extract (DA PDFs → bronze/tables)
 Recon (`docs/recon.md` §2) mapped the layout eras by quarterly sampling. There are about 8 page types, each recognizable from its title line:
@@ -228,7 +229,7 @@ The Google Form fields are:
   - Tables and partitions expire after 60 days, hence the forced reload.
   - **No time partitioning on `fct_prices`**: the 60-day partition expiry would delete history. Cluster by `commodity_id` instead, or use integer-range partitioning on `year_month` (verify at milestone 8).
   - No DML or streaming. Load jobs only.
-  - Whether the sandbox can load from a GCS bucket is unconfirmed. Check before milestone 5; fall back to loading local files.
+  - Load gold from local files (no bucket).
 - Use a dedicated service account with only the roles it needs.
 - After loading, run a row-count check comparing DuckDB gold against BigQuery tables and fail the run on mismatch.
 - Add 3–4 example analytical queries in `warehouse/queries/` for the README.
@@ -264,7 +265,7 @@ Required dbt tests: `not_null` and `unique` on keys, accepted values for categor
 3. `dbt build` against the tiny fixture bronze in `tests/fixtures/parquet/` using local storage, with no cloud credentials.
 4. `docker build` to confirm the image still builds.
 
-The PR must not be mergeable if any step fails. CI must never touch the real bucket or BigQuery.
+The PR must not be mergeable if any step fails. CI must never touch the `lake` release or BigQuery.
 
 ### 8.2 `publish_image.yml` (on push to `main`)
 Build the image and push to GHCR, tagged with the commit SHA and `latest`.
@@ -272,8 +273,8 @@ Build the image and push to GHCR, tagged with the commit SHA and `latest`.
 ### 8.3 `daily_pipeline.yml` (scheduled)
 - Runs daily at about 10:00 PHT (02:00 UTC), plus manual `workflow_dispatch`.
 - Pulls the GHCR image and runs `run-all`: discover → download → extract → primary → PSA (weekly) → `dbt build` → export gold to BigQuery (if changed) → publish gold to a GitHub Release (if changed) → reconciliation.
-- No DuckDB file is persisted between runs; bronze in the bucket is the only state.
-- Secrets (service account JSON, bucket keys) live in GitHub Actions secrets, never in the repo.
+- No DuckDB file is persisted between runs; the `lake` release is the only state (`tawad lake-pull` at the start, `tawad lake-push` after a successful build). The release is never marked latest, so "latest" stays the open data.
+- Secrets (service account JSON) live in GitHub Actions secrets, never in the repo. Release uploads use the workflow's `GITHUB_TOKEN` (`contents: write`).
 - GitHub disables scheduled workflows in public repos after 60 days without repo activity. Document this in the README; re-enable as needed.
 
 ## 9. Dashboard (Looker Studio — built by me)
@@ -291,7 +292,7 @@ Planned pages (for reference): Overview, Trends with seasons shaded, My market v
 - Use type hints on all functions, and give each module a short docstring explaining its purpose.
 - Write small, testable functions. Extractor logic must have tests against fixture PDFs.
 - Use the `logging` module, never bare `print`, in pipeline code.
-- All config (URLs, bucket names, dataset names, date ranges) comes from `config/settings.py`, which reads env vars. Every variable is listed in `.env.example`.
+- All config (URLs, dataset names, date ranges) comes from `config/settings.py`, which reads env vars. Every variable is listed in `.env.example`.
 - Commit messages should be short and imperative ("Add DA extractor for 2023 range packet").
 - Work on feature branches and merge through pull requests so CI history is visible in the repo.
 - Never commit data files (PDFs, Parquet, DuckDB) except the small fixtures. `recon_samples/` is git-ignored.
@@ -304,7 +305,7 @@ Work through these in order. At the end of each, stop, summarize what was done, 
 2. **Project skeleton:** repo layout, `uv` setup, config, storage abstraction (local mode only), Dockerfile, and `ci.yml` running on an empty test suite.
 3. **DA ingestion → bronze:** discover, download, classify, extract into local partitioned Parquet, with tests per era. Backfill everything back to 2018 locally.
 4. **Silver + gold dbt models** for the DA data reading the local bronze, with tests passing in CI against fixtures.
-5. **Object storage:** choose GCS or R2, switch storage to the bucket (after my approval), migrate local bronze, and confirm dbt reads from it.
+5. **Lake storage:** keep the lake in a GitHub Release (no card needed; chosen over GCS/R2 on 2026-10-28), migrate the local lake, and confirm dbt builds from a pulled copy.
 6. **Primary data:** build the Google Form from the seed, ingest from Google Sheets, merge into the models.
 7. **PSA enrichment:** CPI and retail prices; real-price and DA-vs-PSA marts.
 8. **BigQuery export** with sandbox rules, reconciliation, and example queries.
@@ -332,8 +333,7 @@ Work through these in order. At the end of each, stop, summarize what was done, 
 
 ## 13. Things to ask me about rather than assume
 
-- Creating any cloud resource (bucket, BigQuery dataset, service account) or anything that could cost money.
-- GCS vs. R2 for object storage.
+- Creating any cloud resource (BigQuery dataset, service account, GitHub Release) or anything that could cost money.
 - Any new dependency beyond the stack above.
 - Commodity mappings that are ambiguous (e.g. rice grades, local vs imported, pork cuts).
 - Whether to drop or keep data from a PDF layout that only partially extracts.

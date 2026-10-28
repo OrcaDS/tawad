@@ -1,8 +1,8 @@
 """Read/write abstraction over the lake, so pipeline code never touches paths or buckets directly.
 
-Paths are lake-relative POSIX strings such as ``bronze/files/da/...``. The local backend
-maps them under ``LAKE_ROOT``; a bucket backend (milestone 5) will map them to object keys.
-Tests and local development only ever need the local backend.
+Paths are lake-relative POSIX strings such as ``bronze/files/da/...``. They map under
+``LAKE_ROOT``. The lake is always local; ``lake_release`` copies it to and from a GitHub
+release, so a fresh machine or CI run can restore it.
 """
 
 from __future__ import annotations
@@ -104,7 +104,7 @@ class LocalStorage:
     def list(self, prefix: str = "") -> list[str]:
         """All file paths under a prefix (or the file itself), lake-relative and sorted.
 
-        An empty prefix lists the whole lake. Matches a bucket backend's prefix listing.
+        An empty prefix lists the whole lake.
         """
         base = self._full(prefix, allow_root=True)
         if base.is_file():
@@ -132,9 +132,5 @@ class LocalStorage:
 
 
 def get_storage(settings: Settings) -> Storage:
-    """Return the storage backend selected by STORAGE_BACKEND."""
-    if settings.storage_backend == "local":
-        return LocalStorage(settings.lake_root)
-    raise NotImplementedError(
-        f"Storage backend {settings.storage_backend!r} arrives in milestone 5; use 'local'."
-    )
+    """Return the lake storage."""
+    return LocalStorage(settings.lake_root)

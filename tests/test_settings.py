@@ -11,7 +11,6 @@ from pipeline.cli import main
 
 def test_defaults_need_no_environment() -> None:
     s = load_settings()
-    assert s.storage_backend == "local"
     assert s.request_delay_seconds == 5
     assert s.bq_dataset == "palengke_gold"
     assert s.log_level == "INFO"
@@ -20,18 +19,6 @@ def test_defaults_need_no_environment() -> None:
 def test_empty_env_value_falls_back_to_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("BQ_DATASET", "")
     assert load_settings().bq_dataset == "palengke_gold"
-
-
-def test_unknown_backend_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("STORAGE_BACKEND", "s3")
-    with pytest.raises(ValueError, match="STORAGE_BACKEND"):
-        load_settings()
-
-
-def test_bucket_backend_requires_bucket_name(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("STORAGE_BACKEND", "gcs")
-    with pytest.raises(ValueError, match="BUCKET_NAME"):
-        load_settings()
 
 
 @pytest.mark.parametrize(
