@@ -1,0 +1,10 @@
+version: 2
+
+models:
+  - name: stg_da_prices
+    description: DA price rows from bronze, one row per extracted price cell.
+    columns:
+      - name: report_date
+        data_tests: [not_null]
+      - name: page_type
+        data_tests: [not_null]

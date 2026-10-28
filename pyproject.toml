@@ -5,6 +5,8 @@ description = "Palengke Price Tracker: medallion pipeline for Metro Manila retai
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "dbt-core>=1.12.6",
+    "dbt-duckdb>=1.11.1",
     "pdfplumber>=0.11.10",
     "pyarrow>=17",
 ]

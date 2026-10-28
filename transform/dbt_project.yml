@@ -1,0 +1,24 @@
+# dbt project for silver and gold. Run it through `tawad transform`, which passes the
+# lake and DuckDB paths from config/settings.py as vars.
+name: tawad
+version: "0.1.0"
+config-version: 2
+profile: tawad
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+
+vars:
+  lake_root: "../lake"  # overridden by `tawad transform`
+
+flags:
+  send_anonymous_usage_stats: false
+
+models:
+  tawad:
+    silver:
+      +materialized: view
+    gold:
+      +materialized: table

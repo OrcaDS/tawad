@@ -1,0 +1,24 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: Raw rows extracted by `tawad extract-da`, all text, exactly as in the source.
+    tables:
+      - name: da_prices
+        description: One row per price cell read from a DA report page (project.md §6.3).
+        config:
+          external_location: >-
+            read_parquet('{{ var("lake_root") }}/bronze/tables/da_prices/**/*.parquet',
+            hive_partitioning = true, union_by_name = true)
+        columns:
+          - name: report_date
+            data_tests: [not_null]
+          - name: series
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: [price_watch, retail_monitoring, price_monitoring, daily_index, weekly_avg]
+          - name: source_file
+            data_tests: [not_null]
+          - name: revision_rank
+            data_tests: [not_null]

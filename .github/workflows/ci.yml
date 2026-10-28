@@ -26,7 +26,13 @@ jobs:
         run: uv run pytest -q
         env:
           STORAGE_BACKEND: local   # CI never touches the real bucket or BigQuery
-      # dbt build against tests/fixtures/parquet is added in milestone 4
+      - name: dbt build on fixture bronze
+        run: |
+          uv run python tests/fixtures/build_bronze.py
+          uv run tawad transform
+        env:
+          STORAGE_BACKEND: local
+          LAKE_ROOT: tests/fixtures/parquet
 
   docker-build:
     runs-on: ubuntu-24.04
