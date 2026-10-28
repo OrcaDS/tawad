@@ -78,6 +78,38 @@ seeds:
       - name: market
         data_tests: [not_null]
 
+  - name: psa_commodity_map
+    description: >-
+      PSA retail item -> DA canonical commodity, for the PSA items with NCR prices that DA
+      also monitors (mapped by hand, 2026-10-28). Blank origin = all of DA's origins; set
+      only when PSA names one. PSA items without a DA match are not listed.
+    config:
+      column_types:
+        psa_commodity: varchar
+        commodity: varchar
+        origin: varchar
+    columns:
+      - name: psa_commodity
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_psa_retail')
+                field: psa_commodity
+      - name: commodity
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('commodity_map')
+                field: commodity
+      - name: origin
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [local, imported]
+
   - name: ph_holidays
     description: >-
       Philippine national holidays (regular and special non-working days) 2018-2026, as

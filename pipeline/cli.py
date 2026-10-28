@@ -19,6 +19,7 @@ from config.settings import Settings, load_settings
 from ingestion.common import lake_release, manifest
 from ingestion.common.storage import get_storage
 from ingestion.da_prices import discover, download, extract
+from ingestion.psa import openstat
 
 logger = logging.getLogger("tawad")
 TRANSFORM_DIR = Path("transform")  # the dbt project; commands run from the repo root (or /app)
@@ -72,6 +73,14 @@ def _extract_da(args: argparse.Namespace, settings: Settings) -> int:
         storage, manifest.load(storage), series=args.series, redo=args.redo, limit=args.limit
     )
     return 0
+
+
+def _ingest_psa(args: argparse.Namespace, settings: Settings) -> int:
+    """Pull PSA CPI and retail price tables into bronze."""
+    failed = openstat.ingest(
+        get_storage(settings), download.make_fetcher(settings), settings.psa_api_base
+    )
+    return 1 if failed else 0
 
 
 def _lake_push(args: argparse.Namespace, settings: Settings) -> int:
@@ -136,7 +145,7 @@ def build_parser() -> argparse.ArgumentParser:
     pull.add_argument("--pdfs", action="store_true", help="Also restore every DA PDF (~3 GB)")
     pull.set_defaults(handler=_lake_pull)
     sub.add_parser("ingest-psa", help="Pull PSA CPI and retail price tables").set_defaults(
-        handler=_not_yet(7)
+        handler=_ingest_psa
     )
     sub.add_parser("transform", help="dbt build: silver and gold").set_defaults(handler=_transform)
     sub.add_parser("export-bq", help="Load gold tables to BigQuery").set_defaults(

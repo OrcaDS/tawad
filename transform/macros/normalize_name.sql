@@ -17,3 +17,15 @@ nullif(upper(regexp_replace(trim({{ column }}), '\s+', ' ', 'g')), '')
   {% endfor %}
 {% endif %}
 {%- endmacro %}
+
+{#
+  PSA geolocation text -> 'PH' or 'NCR' (texts differ by table: "PHILIPPINES",
+  "..National Capital Region (NCR)", "..NCR - National Capital Region"). Anything else is
+  NULL, which the not_null tests catch.
+#}
+{% macro psa_geo(column) -%}
+case
+    when regexp_matches({{ column }}, '\bNCR\b') then 'NCR'
+    when upper(trim({{ column }}, '.')) = 'PHILIPPINES' then 'PH'
+end
+{%- endmacro %}

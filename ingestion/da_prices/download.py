@@ -47,12 +47,16 @@ class PoliteFetcher:
         self._sleep = sleep
         self._last: float | None = None
 
-    def __call__(self, url: str) -> bytes:
+    def __call__(self, url: str, json_body: bytes | None = None) -> bytes:
+        """GET ``url``, or POST ``json_body`` to it when given."""
         if self._last is not None:
             wait = self.delay - (self._clock() - self._last)
             if wait > 0:
                 self._sleep(wait)
-        request = urllib.request.Request(https_url(url), headers={"User-Agent": self.user_agent})
+        headers = {"User-Agent": self.user_agent}
+        if json_body is not None:
+            headers["Content-Type"] = "application/json"
+        request = urllib.request.Request(https_url(url), data=json_body, headers=headers)
         try:
             return self._open(request, TIMEOUT_SECONDS)
         finally:

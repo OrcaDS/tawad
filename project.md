@@ -156,9 +156,10 @@ tawad/                            # github.com/OrcaDS/tawad
 - `bronze/tables/`: extracted rows **as text, exactly as they appear**, plus lineage. No type conversion and no cleaning here.
   ```
   bronze/tables/da_prices/year=2026/month=10/part-<series>-<report_date>-r<revision>.parquet
-  bronze/tables/psa_cpi/part-<run_id>.parquet
-  bronze/tables/psa_retail/part-<run_id>.parquet
+  bronze/tables/psa_cpi/<table_id>.parquet        # e.g. 0012M4ACP22
+  bronze/tables/psa_retail/<table_id>.parquet     # 0042M4ARN01 … 0042M4ARN11
   ```
+  Each PSA pull returns a table's whole history, so each table is one file, overwritten by the next pull (Philippines and NCR rows only, one row per cell).
 - Writes must be idempotent: re-extracting a report overwrites its own file, never appends duplicates.
 - Define an explicit `pyarrow` schema per dataset (no schema inference). Use snappy compression.
 - `ingestion/common/storage.py` works on the local lake only, so tests and local dev never need credentials. `ingestion/common/lake_release.py` copies the lake to and from the `lake` GitHub Release (deterministic tars, re-uploaded only when their sha256 changes; every PDF is checked against its manifest hash before upload).

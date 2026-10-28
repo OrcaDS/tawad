@@ -18,7 +18,79 @@ models:
               arguments:
                 values: [prevailing, midpoint, average, single]
 
+  - name: stg_psa_cpi
+    description: >-
+      PSA CPI (2018 = 100) by commodity group, monthly, Philippines and NCR. cpi NULL = PSA
+      has no value. Group "0" is all items, "01.1" is food.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "geo || '|' || cpi_group_code || '|' || month"
+    columns:
+      - name: geo
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [PH, NCR]
+      - name: month
+        data_tests: [not_null]
+
+  - name: stg_psa_retail
+    description: PSA monthly retail prices, Philippines and NCR. price NULL = PSA has no value.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "geo || '|' || psa_commodity || '|' || month"
+    columns:
+      - name: geo
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [PH, NCR]
+      - name: month
+        data_tests: [not_null]
+
 unit_tests:
+  - name: test_psa_retail_drops_annual_and_nulls_missing
+    model: stg_psa_retail
+    given:
+      - input: source('bronze', 'psa_retail')
+        format: csv
+        rows: |
+          geolocation_raw,item_raw,period_raw,value_raw
+          ..NCR - National Capital Region,"FRESH PORK, KASIM, 1 KG",2026 September,336.42
+          ..NCR - National Capital Region,"FRESH PORK, KASIM, 1 KG",2026 October,.
+          ..NCR - National Capital Region,"WHOLE CORN ON THE COB, WHITE, 1 KG",2018 January,..
+          Philippines,"FRESH PORK, KASIM, 1 KG",2026 September,320.10
+          Philippines,"FRESH PORK, KASIM, 1 KG",2025 Annual,318.00
+    expect:
+      format: csv
+      rows: |
+        geo,psa_commodity,month,price
+        NCR,"FRESH PORK, KASIM, 1 KG",2026-09-01,336.42
+        NCR,"FRESH PORK, KASIM, 1 KG",2026-10-01,
+        NCR,"WHOLE CORN ON THE COB, WHITE, 1 KG",2018-01-01,
+        PH,"FRESH PORK, KASIM, 1 KG",2026-09-01,320.10
+
+  - name: test_psa_cpi_splits_group_code
+    model: stg_psa_cpi
+    given:
+      - input: source('bronze', 'psa_cpi')
+        format: csv
+        rows: |
+          geolocation_raw,item_raw,period_raw,value_raw
+          PHILIPPINES,0 - ALL ITEMS,2018 Jan,97.2000000000000
+          ..National Capital Region (NCR),11.1.1.1 - Restaurants - with full service (S),2026 Sep,140.9
+          ..National Capital Region (NCR),0 - ALL ITEMS,2026 Ave,..
+    expect:
+      format: csv
+      rows: |
+        geo,cpi_group_code,cpi_group,month,cpi
+        PH,0,ALL ITEMS,2018-01-01,97.2
+        NCR,11.1.1.1,Restaurants - with full service (S),2026-09-01,140.9
+
   - name: test_parse_price_cleans_or_nulls_every_raw_shape
     description: One row per kind of raw price text seen in the lake (2026-10-28 survey).
     model: stg_da_prices
