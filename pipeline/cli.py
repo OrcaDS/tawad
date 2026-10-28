@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import json
 import logging
 import sys
 from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime
+from pathlib import Path
 
 from config.settings import Settings, load_settings
 from ingestion.common import manifest
@@ -19,6 +21,7 @@ from ingestion.common.storage import get_storage
 from ingestion.da_prices import discover, download, extract
 
 logger = logging.getLogger("tawad")
+TRANSFORM_DIR = Path("transform")  # the dbt project; commands run from the repo root (or /app)
 
 
 def _not_yet(milestone: int) -> Callable[[argparse.Namespace, Settings], int]:
@@ -71,6 +74,28 @@ def _extract_da(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def _transform(args: argparse.Namespace, settings: Settings) -> int:
+    """Build silver and gold with dbt (models, seeds and tests) over the local bronze."""
+    from dbt.cli.main import dbtRunner  # slow import; only this command needs it
+
+    dbt_vars = {
+        "lake_root": settings.lake_root.resolve().as_posix(),
+        "duckdb_path": settings.duckdb_path.resolve().as_posix(),
+    }
+    result = dbtRunner().invoke(
+        [
+            "build",
+            "--project-dir",
+            str(TRANSFORM_DIR),
+            "--profiles-dir",
+            str(TRANSFORM_DIR),
+            "--vars",
+            json.dumps(dbt_vars),
+        ]
+    )
+    return 0 if result.success else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tawad", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -98,7 +123,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("ingest-psa", help="Pull PSA CPI and retail price tables").set_defaults(
         handler=_not_yet(7)
     )
-    sub.add_parser("transform", help="dbt build: silver and gold").set_defaults(handler=_not_yet(4))
+    sub.add_parser("transform", help="dbt build: silver and gold").set_defaults(handler=_transform)
     sub.add_parser("export-bq", help="Load gold tables to BigQuery").set_defaults(
         handler=_not_yet(8)
     )

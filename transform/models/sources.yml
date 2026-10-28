@@ -1,0 +1,23 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: >-
+      Raw rows extracted by `tawad extract-da`, all text, exactly as in the source. Views over
+      the lake's Parquet, created by the `register_bronze` macro at the start of each run.
+    schema: bronze
+    tables:
+      - name: da_prices
+        description: One row per price cell read from a DA report page (project.md §6.3).
+        columns:
+          - name: report_date
+            data_tests: [not_null]
+          - name: series
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: [price_watch, retail_monitoring, price_monitoring, daily_index, weekly_avg]
+          - name: source_file
+            data_tests: [not_null]
+          - name: revision_rank
+            data_tests: [not_null]

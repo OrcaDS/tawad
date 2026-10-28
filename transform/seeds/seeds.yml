@@ -1,0 +1,132 @@
+version: 2
+
+seeds:
+  - name: commodity_map
+    description: >-
+      DA name -> canonical commodity. Keyed on (category header, commodity, specification)
+      as normalized by the `normalize_name` macro, because imported vs local rice is only
+      in the header. Category comes from here, never from PDF headers. A row with an
+      exclude_reason is not a price (e.g. a header read as a name) and is left out of silver.
+    config:
+      column_types:
+        category_header_raw: varchar
+        commodity_raw: varchar
+        specification_raw: varchar
+        commodity: varchar
+        variant: varchar
+        origin: varchar
+        category: varchar
+        unit: varchar
+        exclude_reason: varchar
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "coalesce(category_header_raw, '') || '|' || coalesce(commodity_raw, '') || '|' || coalesce(specification_raw, '')"
+    columns:
+      - name: commodity
+        description: Shopper-level name that stays the same across DA's eras.
+        data_tests:
+          - not_null:
+              config:
+                where: exclude_reason is null
+      - name: variant
+        description: DA's sub-item, when it splits one (fresh/frozen, brand, colour, variety, size).
+      - name: origin
+        description: local or imported, when DA says so; blank otherwise.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [local, imported]
+      - name: category
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Rice
+                  - Corn
+                  - Fish
+                  - Pork
+                  - Beef
+                  - Other meat
+                  - Poultry
+                  - Eggs
+                  - Lowland vegetables
+                  - Highland vegetables
+                  - Spices
+                  - Fruits
+                  - Legumes
+                  - Other basic commodities
+      - name: unit
+        description: What one price buys. Eggs are per piece and cooking oil per bottle (size in the name).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [kg, piece, bottle]
+
+  - name: markets
+    description: DA market spelling -> canonical market and city. A blank market_raw is the NCR-wide figure.
+    config:
+      column_types:
+        market_raw: varchar
+        market: varchar
+        city: varchar
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "coalesce(market_raw, '')"
+    columns:
+      - name: market
+        data_tests: [not_null]
+
+  - name: ph_holidays
+    description: >-
+      Philippine national holidays (regular and special non-working days) 2018-2026, as
+      proclaimed. Generated once with the `holidays` Python library (v0.107); add each new
+      year by hand from the President's proclamation.
+    config:
+      column_types:
+        holiday_date: date
+        holiday_name: varchar
+    columns:
+      - name: holiday_date
+        data_tests: [unique, not_null]
+
+  - name: srp_history
+    description: >-
+      Government price caps on DA-monitored items in Metro Manila: price ceilings (by
+      executive order, mandatory), SRPs and MSRPs (DA, suggested). One row per level, with
+      the dates it was in force (effective_to blank = still in force) and a source link.
+      Blank variant or origin = the cap covers all of them. Researched 2026-10-28 from
+      news reports and DA releases; not every cap since 2018 is here (see the note column
+      and docs/data_dictionary.md).
+    config:
+      column_types:
+        commodity: varchar
+        variant: varchar
+        origin: varchar
+        cap_type: varchar
+        cap_price: double
+        effective_from: date
+        effective_to: date
+        legal_basis: varchar
+        source_url: varchar
+        note: varchar
+    columns:
+      - name: commodity
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('commodity_map')
+                field: commodity
+      - name: cap_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [price_ceiling, srp, msrp]
+      - name: cap_price
+        data_tests: [not_null]
+      - name: effective_from
+        data_tests: [not_null]
+      - name: source_url
+        data_tests: [not_null]

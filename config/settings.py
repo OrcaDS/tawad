@@ -62,6 +62,11 @@ class Settings:
     gcp_project_id: str
     bq_dataset: str
 
+    @property
+    def duckdb_path(self) -> Path:
+        """DuckDB file that dbt builds silver and gold in (rebuilt from bronze every run)."""
+        return self.lake_root / "tawad.duckdb"
+
     def __post_init__(self) -> None:
         if self.log_level not in logging.getLevelNamesMapping():
             raise ValueError(

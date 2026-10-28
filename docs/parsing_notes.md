@@ -194,3 +194,21 @@ One commodity per page: two pork pages (`FRESH & FROZEN PORK KASIM/PIGUE`, `… 
   - *Column strips* (9 reports): the sheet is also cut across, and the right part sits on its own pages with no commodity names (Nov–Dec 2018). Some of these strips are classified `ncr_summary`.
   - *Market names lost or glued* (11 reports): `Mega Q-mart Pasig` in one cell over six columns (Nov 2018 → Feb 2019). Columns would get the wrong market, so a market whose fields repeat raises.
   - *First markets glued into the Specification cell* (`Mega Q-mart Pasay Polo\nSpecification\n…`, Dec 2018, Sep 2019) or a missing NCR header (Nov 2018): 6 reports.
+
+## Price text in silver (`parse_price`, surveyed 2026-10-28 over all 888,212 bronze rows)
+- 61 distinct shapes of price text once digits are collapsed. 1.5 M cells are plain `53.38`; everything else is listed in the unit test in `transform/models/silver/silver.yml`.
+- **Read as prices:** digits split by the PDF (`2 7.00`, `5 .00`; 2018–20 matrices), thousands commas, footnote stars before or after (`**35.00`, `50.00***`), and parentheses (`( 50.00)`: Jul–Aug 2019 matrices and 2021–22 grids print the prevailing price in brackets between low and high).
+- **Stray letters** that bled in from the next cell are dropped when they touch a number (`g 60`, `kg 60`, `e 5`, `E160.00`, `145.00N`, `90.00g`; 11 cells).
+- **Missing (NULL):** `0`/`0.00`, `n/a` and case variants, `#N/A`, `#DIV/0!`, `#VALUE!`, `#REF!`, `####`, `-`, `(-)`, `NONE`/`None`, `n/m`, `N/I`, blank, `NO MONITORING ACTIVITY CONDUCTED`, and `NOT AVAILABLE` with typos (`AVAILABKE`, `AVALABLE`, `OT AVAILABL`, …).
+- **Garbled overlaps** stay NULL: `NOT AVAILA4B00LE.00` (3 cells, `ncr_compare`), `0.00n/m0.00`. The `warn_unparsed_numbers` test lists any new text with digits that does not parse.
+- 36 rows have low > high (DA typos); kept, flagged with the outlier checks.
+
+## Names in silver (seeds `commodity_map.csv` and `markets.csv`, drafted 2026-10-28 from all 888,212 bronze rows)
+- **Commodity key:** (category header, commodity, specification), upper-cased with whitespace and line breaks collapsed (`normalize_name` macro): 1,500 combinations → 140 commodities. The header is needed only for rice (imported vs local, and the Kadiwa section). Category always comes from the seed.
+- **Commodity** stays the same across DA's renames (`AMPALAYA` / `AMARGOSO` / `BITTERGOURD AMPALAYA`; `FANCY` → `SPECIAL` rice; `PORK HAM/KASIM` → kasim). **Variant** holds DA's sub-items: fresh/frozen pork, chicken brand, egg colour, cabbage and lettuce variety, onion and bangus size. **Origin** is set only when DA says local or imported.
+- **Poster footnote letters** glued to names (`WELL-MILLEDA`, `LOCAL GARLIC BAWANG E`, `CORN (WHITE) GLUTINOUSC`) and stars map to the plain name.
+- **Kadiwa header:** plain rice names under `KADIWA RICE-FOR-ALL` are Rice-for-All (a flat ₱40 `Well-milled a` in Dec 2024).
+- **Unit comes from the seed** (kg, piece for eggs, bottle for cooking oil with the size in the name), not from DA's unit column: DA labels 38 mid-2020 whole-chicken rows `pc` (₱146, a per-kg price) and 8 Jan 2026 oil rows `kg`.
+- **Excluded (325 rows),** each with its reason in the seed: no name extracted (296), a category header read as a name (15), a price cell read as a name (`N/A`, 8), two names merged in one cell (2), a name merged with the next header (3), an oil row with its type cut off (1).
+- **Markets:** 95 spellings → 55 markets plus the NCR-wide row. A blank market is the NCR-wide figure. The 2018–20 short names (`Pasay`, `Muñoz`) map to the market of that name today; `San Juan` maps to Agora. Similar names that never appear on the same date were merged (`Mandaluyong Public Market` and `… I`); those that do stay apart (`Marikina Zone`, `Pateros Market` vs `Grace Marketplace`, `Pasig City Mega Market` vs `Mutya ng Pasig`).
+- The `every_da_name_is_mapped` test fails the run and logs each new name, to be added by hand.

@@ -1,0 +1,8 @@
+# Local DuckDB only; no secrets. `tawad transform` passes duckdb_path from config/settings.py.
+tawad:
+  target: local
+  outputs:
+    local:
+      type: duckdb
+      path: "{{ var('duckdb_path', '../lake/tawad.duckdb') }}"
+      threads: 4

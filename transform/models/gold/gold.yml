@@ -1,0 +1,172 @@
+version: 2
+
+# Column meanings, units and the source attribution are in docs/data_dictionary.md.
+models:
+  - name: fct_prices
+    description: >-
+      One row per date x source x series x location x item. Price NULL = listed but not
+      available. Outliers are flagged (is_outlier), never dropped.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "price_date || '|' || source || '|' || series || '|' || location_id || '|' || commodity_id"
+    columns:
+      - name: price_date
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: calendar_date
+      - name: series
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [price_watch, retail_monitoring, price_monitoring, daily_index, weekly_avg]
+      - name: location_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_location')
+                field: location_id
+      - name: commodity_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_commodity')
+                field: commodity_id
+      - name: price_basis
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [prevailing, midpoint, average, single]
+      - name: is_outlier
+        data_tests: [not_null]
+
+  - name: fct_srp_compliance
+    description: >-
+      One row per DA price with a government cap (price ceiling, SRP or MSRP) in force on
+      its date. Same grain as fct_prices.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "price_date || '|' || source || '|' || series || '|' || location_id || '|' || commodity_id"
+    columns:
+      - name: cap_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [price_ceiling, srp, msrp]
+      - name: is_above_cap
+        data_tests: [not_null]
+
+  - name: dim_commodity
+    columns:
+      - name: commodity_id
+        data_tests: [unique, not_null]
+      - name: commodity
+        data_tests: [not_null]
+
+  - name: dim_location
+    columns:
+      - name: location_id
+        data_tests: [unique, not_null]
+      - name: location_name
+        data_tests: [unique, not_null]
+
+  - name: dim_date
+    columns:
+      - name: calendar_date
+        data_tests: [unique, not_null]
+
+unit_tests:
+  - name: test_fct_prices_keeps_one_row_per_grain
+    description: >-
+      Priced row beats unpriced; the main table beats a detail page; else the row DA
+      printed first.
+    model: fct_prices
+    given:
+      - input: ref('stg_da_prices')
+        format: csv
+        rows: |
+          report_date,series,market,commodity,page_type,page,file_row_number,price
+          2024-01-01,price_monitoring,Bicutan Market,Tomato,market_range,1,1,
+          2024-01-01,price_monitoring,Bicutan Market,Tomato,market_range,1,2,80
+          2024-01-02,price_monitoring,Bicutan Market,Pork liempo (belly),pork_by_market,3,1,340
+          2024-01-02,price_monitoring,Bicutan Market,Pork liempo (belly),market_range,2,9,390
+          2024-01-03,price_monitoring,NCR (all markets),Mango (carabao),ncr_range,1,7,75
+          2024-01-03,price_monitoring,NCR (all markets),Mango (carabao),ncr_range,1,3,195
+    expect:
+      format: csv
+      rows: |
+        price_date,price
+        2024-01-01,80
+        2024-01-02,390
+        2024-01-03,195
+
+  - name: test_fct_prices_week_ago_and_outliers
+    description: >-
+      Week-ago price is the latest one 7-13 days earlier; none when the gap is 14+ days.
+      A price over double the month's median for the item is an outlier.
+    model: fct_prices
+    given:
+      - input: ref('stg_da_prices')
+        format: csv
+        rows: |
+          report_date,series,market,commodity,page_type,page,file_row_number,price,price_low,price_high
+          2024-05-01,price_monitoring,Bicutan Market,Tomato,market_range,1,1,100,,
+          2024-05-06,price_monitoring,Bicutan Market,Tomato,market_range,1,1,110,,
+          2024-05-08,price_monitoring,Bicutan Market,Tomato,market_range,1,1,120,,
+          2024-05-13,price_monitoring,Bicutan Market,Tomato,market_range,1,1,90,,
+          2024-05-31,price_monitoring,Bicutan Market,Tomato,market_range,1,1,1000,,
+          2024-05-20,price_monitoring,Pritil Market,Tomato,market_range,1,1,100,120,80
+    expect:
+      format: csv
+      rows: |
+        price_date,price_week_ago,price_change_wow,is_outlier
+        2024-05-01,,,false
+        2024-05-06,,,false
+        2024-05-08,100,20,false
+        2024-05-13,110,-20,false
+        2024-05-31,,,true
+        2024-05-20,,,true
+
+  - name: test_srp_compliance_uses_cap_in_force_that_day
+    description: >-
+      Each price meets the cap in force on its date; none before a cap starts or after it
+      ends. A cap with a blank origin covers every origin; one with an origin only that one.
+    model: fct_srp_compliance
+    given:
+      - input: ref('fct_prices')
+        format: csv
+        rows: |
+          price_date,commodity_id,price,price_high
+          2025-03-09,kasim,360,
+          2025-03-10,kasim,360,
+          2025-05-15,kasim,360,
+          2025-12-05,kasim,320,340
+          2025-03-01,rice_imp,50,
+          2025-03-01,rice_loc,50,
+      - input: ref('dim_commodity')
+        format: csv
+        rows: |
+          commodity_id,commodity,variant,origin
+          kasim,Pork kasim (shoulder),frozen,
+          rice_imp,"Rice, premium",,imported
+          rice_loc,"Rice, premium",,local
+      - input: ref('srp_history')
+        format: csv
+        rows: |
+          commodity,variant,origin,cap_type,cap_price,effective_from,effective_to
+          Pork kasim (shoulder),,,msrp,350,2025-03-10,2025-05-14
+          Pork kasim (shoulder),,,msrp,330,2025-12-05,
+          "Rice, premium",,imported,msrp,49,2025-03-01,2025-03-30
+    expect:
+      format: csv
+      rows: |
+        price_date,commodity_id,cap_price,is_above_cap,is_high_above_cap
+        2025-03-10,kasim,350,true,true
+        2025-12-05,kasim,330,false,true
+        2025-03-01,rice_imp,49,true,true

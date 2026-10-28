@@ -22,6 +22,8 @@ recon_samples/
 *.pdf
 !tests/fixtures/**/*.parquet
 !tests/fixtures/**/*.pdf
+# built by tests/fixtures/build_bronze.py from the committed CSV
+tests/fixtures/parquet/
 
 # dbt
 transform/target/
