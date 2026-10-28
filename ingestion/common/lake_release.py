@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Protocol
@@ -77,7 +78,11 @@ class GhRelease:
         self._exists = False
 
     def _gh(self, *args: str) -> str:
-        return subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
+        try:
+            return subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
+        except subprocess.CalledProcessError as exc:
+            exc.add_note(f"gh stderr: {exc.stderr.strip()}")  # shown in the traceback
+            raise
 
     def assets(self) -> dict[str, str]:
         try:
@@ -91,8 +96,20 @@ class GhRelease:
             for a in json.loads(out)["assets"]
         }
 
+    def _transfer(self, *args: str) -> None:
+        """Run an upload or download, retrying: ~90 MB transfers sometimes drop mid-way."""
+        for wait in (10, 60, None):
+            try:
+                self._gh("release", *args, "--clobber")
+                return
+            except subprocess.CalledProcessError:
+                if wait is None:
+                    raise
+                logger.warning("gh release %s failed; retrying in %d s", args[0], wait)
+                time.sleep(wait)
+
     def download(self, name: str, dest: Path) -> Path:
-        self._gh("release", "download", self.tag, "--pattern", name, "--dir", str(dest))
+        self._transfer("download", self.tag, "--pattern", name, "--dir", str(dest))
         return dest / name
 
     def upload(self, path: Path) -> None:
@@ -101,14 +118,15 @@ class GhRelease:
                 self._gh("release", "view", self.tag)
             except subprocess.CalledProcessError:
                 self._gh(
-                    "release", "create", self.tag, "--latest=false",
+                    # prerelease: GitHub's "Latest" badge then stays on the open data
+                    "release", "create", self.tag, "--prerelease", "--latest=false",
                     "--title", "Lake state (pipeline input, not the open data)",
                     "--notes", RELEASE_NOTES,
                 )  # fmt: skip
             self._exists = True
-        # --clobber deletes the old asset before uploading; a failed upload is fixed by
-        # pushing again, since the local lake still holds everything.
-        self._gh("release", "upload", self.tag, str(path), "--clobber")
+        # --clobber deletes the old asset before uploading; if every try fails, pushing
+        # again fixes it, since the local lake still holds everything.
+        self._transfer("upload", self.tag, str(path))
 
 
 def sha256_of(path: Path) -> str:
@@ -171,6 +189,14 @@ def pdf_months(root: Path) -> dict[str, dict[str, str]]:
     return dict(months)
 
 
+def _fetch(release: Release, remote: dict[str, str], name: str, dest: Path) -> Path:
+    """Download an asset and check it against the sha256 the release reports."""
+    path = release.download(name, dest)
+    if remote[name] and sha256_of(path) != remote[name]:
+        raise ValueError(f"Downloaded {name} does not match its release sha256")
+    return path
+
+
 def push(root: Path, release: Release) -> int:
     """Upload every asset whose content changed; return how many were uploaded."""
     remote = release.assets()
@@ -201,7 +227,9 @@ def push(root: Path, release: Release) -> int:
                     raise FileNotFoundError(
                         f"{len(missing)} PDFs of {month} are neither here nor in the release"
                     )
-                unpack(release.download(name, tmp_dir), root, ("bronze/files",), only=missing)
+                unpack(
+                    _fetch(release, remote, name, tmp_dir), root, ("bronze/files",), only=missing
+                )
             for path, sha in files.items():
                 if sha256_of(root / path) != sha:
                     raise ValueError(
@@ -220,9 +248,9 @@ def pull(root: Path, release: Release, *, pdfs: bool = False) -> None:
         raise FileNotFoundError(f"The release has no {BRONZE_ASSET}; push a lake first")
     root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
-        unpack(release.download(BRONZE_ASSET, Path(tmp)), root, BRONZE_DIRS)
+        unpack(_fetch(release, remote, BRONZE_ASSET, Path(tmp)), root, BRONZE_DIRS)
         for name in sorted(remote) if pdfs else []:
             if name.startswith("pdfs-"):
-                unpack(release.download(name, Path(tmp)), root, ("bronze/files",))
+                unpack(_fetch(release, remote, name, Path(tmp)), root, ("bronze/files",))
                 (Path(tmp) / name).unlink()
     logger.info("Lake pulled into %s%s", root, " with PDFs" if pdfs else "")

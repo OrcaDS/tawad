@@ -125,6 +125,21 @@ def test_push_refuses_pdfs_missing_everywhere(tmp_path: Path, release: FolderRel
         push(lake, release)
 
 
+def test_pull_rejects_a_truncated_download(tmp_path: Path, release: FolderRelease) -> None:
+    write_lake(tmp_path / "lake", {f"{OCT}/a.pdf": b"a"})
+    push(tmp_path / "lake", release)
+    real_download = release.download
+
+    def truncated(name: str, dest: Path) -> Path:
+        path = real_download(name, dest)
+        path.write_bytes(path.read_bytes()[:100])
+        return path
+
+    release.download = truncated  # type: ignore[method-assign]
+    with pytest.raises(ValueError, match="does not match"):
+        pull(tmp_path / "fresh", release)
+
+
 def test_pull_needs_a_pushed_lake(tmp_path: Path, release: FolderRelease) -> None:
     with pytest.raises(FileNotFoundError, match=BRONZE_ASSET):
         pull(tmp_path / "lake", release)
