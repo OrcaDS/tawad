@@ -37,6 +37,17 @@ TAG = "lake"  # one release holds every asset; never marked "latest" (that is th
 BRONZE_ASSET = "bronze.tar"
 BRONZE_DIRS = ("bronze/tables", "bronze/manifest")
 _MONTH = re.compile(r"/year=(\d{4})/month=(\d{2})/")
+RELEASE_NOTES = """\
+Pipeline state for tawad, restored with `tawad lake-pull`. **For the cleaned, standardized \
+price data, use the latest release instead.**
+
+- `bronze.tar`: prices as extracted from the reports (raw text) and the file manifest.
+- `pdfs-YYYY-MM.tar`: unmodified copies of the Department of Agriculture's Bantay Presyo \
+price monitoring reports for that month, as published at https://www.da.gov.ph/price-monitoring/.
+
+Source: Department of Agriculture (Philippines). This is not an official DA source; DA's own \
+site is authoritative.
+"""
 
 
 class Release(Protocol):
@@ -63,6 +74,7 @@ class GhRelease:
         if shutil.which("gh") is None:
             raise RuntimeError("The GitHub CLI 'gh' is not installed or not on PATH")
         self.tag = tag
+        self._exists = False
 
     def _gh(self, *args: str) -> str:
         return subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
@@ -84,13 +96,16 @@ class GhRelease:
         return dest / name
 
     def upload(self, path: Path) -> None:
-        if not self.assets():
-            self._gh(
-                "release", "create", self.tag, "--latest=false",
-                "--title", "Lake state (pipeline input, not the open data)",
-                "--notes", "Bronze tables, manifest and original DA PDFs, restored by "
-                "`tawad lake-pull`. For the cleaned data, use the latest release.",
-            )  # fmt: skip
+        if not self._exists:
+            try:
+                self._gh("release", "view", self.tag)
+            except subprocess.CalledProcessError:
+                self._gh(
+                    "release", "create", self.tag, "--latest=false",
+                    "--title", "Lake state (pipeline input, not the open data)",
+                    "--notes", RELEASE_NOTES,
+                )  # fmt: skip
+            self._exists = True
         # --clobber deletes the old asset before uploading; a failed upload is fixed by
         # pushing again, since the local lake still holds everything.
         self._gh("release", "upload", self.tag, str(path), "--clobber")
