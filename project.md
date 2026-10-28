@@ -12,9 +12,9 @@ A batch ETL pipeline built as a **medallion architecture** (bronze → silver �
 2. **Primary data:** prices I collect myself every week at my local palengke and sari-sari store, entered through a Google Form that writes to a Google Sheet.
 3. **Enrichment:** PSA OpenSTAT. CPI is used to deflate prices and compare them against official inflation. PSA's monthly retail prices are used as a cross-check against DA.
 
-The output is a set of **gold tables in BigQuery**. I build the dashboard myself in **Looker Studio** on top of them. The dashboard is not part of this repo.
+The goal is **open data**. DA's prices are scattered across PDFs in many layouts, so this project turns them into one clean, standardized dataset that anyone can download. Gold tables are published as CSV and Parquet, with the data dictionary, on **GitHub Releases** (free, public, versioned), and are also loaded to **BigQuery**. My **Looker Studio** dashboard is a demo showing that the data is usable. It is not part of this repo.
 
-This is a **portfolio project** for data engineering and analytics roles. Code quality, reproducibility, documentation, and a clear analytical story matter as much as the pipeline working. It should show habits used in professional data teams: medallion layering, a tested transformation layer, a cloud warehouse, containerized runs, and CI.
+It is also a **portfolio project** for data engineering and analytics roles. Code quality, reproducibility, documentation, and a clear analytical story matter as much as the pipeline working. It should show habits used in professional data teams: medallion layering, a tested transformation layer, a cloud warehouse, containerized runs, and CI.
 
 ## 2. Questions the gold layer must answer
 
@@ -271,7 +271,7 @@ Build the image and push to GHCR, tagged with the commit SHA and `latest`.
 
 ### 8.3 `daily_pipeline.yml` (scheduled)
 - Runs daily at about 10:00 PHT (02:00 UTC), plus manual `workflow_dispatch`.
-- Pulls the GHCR image and runs `run-all`: discover → download → extract → primary → PSA (weekly) → `dbt build` → export gold to BigQuery (if changed) → reconciliation.
+- Pulls the GHCR image and runs `run-all`: discover → download → extract → primary → PSA (weekly) → `dbt build` → export gold to BigQuery (if changed) → publish gold to a GitHub Release (if changed) → reconciliation.
 - No DuckDB file is persisted between runs; bronze in the bucket is the only state.
 - Secrets (service account JSON, bucket keys) live in GitHub Actions secrets, never in the repo.
 - GitHub disables scheduled workflows in public repos after 60 days without repo activity. Document this in the README; re-enable as needed.
@@ -308,7 +308,7 @@ Work through these in order. At the end of each, stop, summarize what was done, 
 6. **Primary data:** build the Google Form from the seed, ingest from Google Sheets, merge into the models.
 7. **PSA enrichment:** CPI and retail prices; real-price and DA-vs-PSA marts.
 8. **BigQuery export** with sandbox rules, reconciliation, and example queries.
-9. **Automation:** `publish_image.yml` and `daily_pipeline.yml` running end to end in the container.
+9. **Automation:** `publish_image.yml` and `daily_pipeline.yml` running end to end in the container, including publishing gold as open data (CSV + Parquet + data dictionary) to a GitHub Release.
 10. **Looker Studio handoff:** data dictionary finalized, `meta_last_refresh`, a check that every planned dashboard page can be built from gold. I build the dashboard.
 11. **Portfolio polish:** README, architecture diagram, and 3–5 written findings.
 
@@ -318,6 +318,10 @@ Work through these in order. At the end of each, stop, summarize what was done, 
 - An architecture diagram showing bronze → silver → gold → BigQuery → Looker Studio.
 - A link to the Looker Studio dashboard and a screenshot.
 - Data sources with attribution and licenses.
+- How to download the open data (latest GitHub Release), plus:
+  - Attribution: "Source: Department of Agriculture Bantay Presyo reports. Cleaned and standardized by tawad. Not an official DA product." No DA logo or branding.
+  - Disclaimer: provided as is; DA's own typos are kept and flagged (`is_outlier`), and parsing may contain errors.
+  - Licenses: code MIT; my own market prices CC BY 4.0; DA-derived tables are Philippine government data (no copyright under RA 8293 §176; commercial users should check with DA); PSA data under PSA's terms.
 - 3–5 concrete findings, each backed by a chart.
 - Engineering challenges solved: PDF format drift across ~5 layout eras, messy missing-value tokens, report revisions, commodity and market name standardization, unit normalization, idempotent partitioned writes, keeping CI free of cloud credentials, working within BigQuery sandbox limits.
 - Example BigQuery queries and what they show.
