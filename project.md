@@ -213,16 +213,16 @@ My own weekly prices were dropped: DA already monitors Bicutan Market, so they w
 ### 6.7 Load gold to BigQuery (sandbox)
 - `warehouse/export_to_bigquery.py`:
   1. Exports each gold model from DuckDB to Parquet (`COPY ... TO ... (FORMAT parquet)`).
-  2. Hashes each export. **Runs a load job only when the hash changed**, or when the last load is more than ~50 days old.
+  2. Hashes each export (rows in a fixed order). **Loads a table only when it is missing, its hash changed and its last load is ≥ 28 days old (monthly, decided 2026-10-28), or it expires within 10 days.** `--force` reloads all. The hash is kept in the table description and cumulative bytes loaded in a dataset label, so no state file is needed.
   3. Load job with `WRITE_TRUNCATE` into dataset `palengke_gold`.
 - Sandbox rules (verified 2026-10-24, see recon §4):
   - Storage is a **lifetime** 10 GiB that deletions don't give back, so every reload uses up part of it. Keep gold small and log the cumulative bytes loaded.
   - Tables and partitions expire after 60 days, hence the forced reload.
-  - **No time partitioning on `fct_prices`**: the 60-day partition expiry would delete history. Cluster by `commodity_id` instead, or use integer-range partitioning on `year_month` (verify at milestone 8).
+  - **No time partitioning on `fct_prices`**: the 60-day partition expiry would delete history. `fct_prices` and `fct_srp_compliance` are clustered by `commodity_id` (no partitioning). Each load sets the table to expire in 59 days.
   - No DML or streaming. Load jobs only.
   - Load gold from local files (no bucket).
 - Use a dedicated service account with only the roles it needs.
-- After loading, run a row-count check comparing DuckDB gold against BigQuery tables and fail the run on mismatch.
+- After loading, run a row-count check comparing DuckDB gold against each table loaded in that run and fail the run on mismatch (skipped tables are behind on purpose).
 - Add 3–4 example analytical queries in `warehouse/queries/` for the README.
 
 ### 6.8 Data quality
