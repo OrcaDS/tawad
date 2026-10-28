@@ -24,14 +24,11 @@ jobs:
         run: uv run ruff format --check .
       - name: Tests
         run: uv run pytest -q
-        env:
-          STORAGE_BACKEND: local   # CI never touches the real bucket or BigQuery
       - name: dbt build on fixture bronze
         run: |
           uv run python tests/fixtures/build_bronze.py
           uv run tawad transform
         env:
-          STORAGE_BACKEND: local
           LAKE_ROOT: tests/fixtures/parquet
 
   docker-build:

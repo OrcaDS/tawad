@@ -16,7 +16,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 from config.settings import Settings, load_settings
-from ingestion.common import manifest
+from ingestion.common import lake_release, manifest
 from ingestion.common.storage import get_storage
 from ingestion.da_prices import discover, download, extract
 
@@ -74,6 +74,18 @@ def _extract_da(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def _lake_push(args: argparse.Namespace, settings: Settings) -> int:
+    """Upload changed lake assets (bronze tables, manifest, PDFs) to the GitHub release."""
+    lake_release.push(settings.lake_root, lake_release.GhRelease())
+    return 0
+
+
+def _lake_pull(args: argparse.Namespace, settings: Settings) -> int:
+    """Restore the lake from the GitHub release."""
+    lake_release.pull(settings.lake_root, lake_release.GhRelease(), pdfs=args.pdfs)
+    return 0
+
+
 def _transform(args: argparse.Namespace, settings: Settings) -> int:
     """Build silver and gold with dbt (models, seeds and tests) over the local bronze."""
     from dbt.cli.main import dbtRunner  # slow import; only this command needs it
@@ -117,9 +129,12 @@ def build_parser() -> argparse.ArgumentParser:
     ex.add_argument("--redo", action="store_true", help="Also redo extracted and failed reports")
     ex.add_argument("--limit", metavar="N", type=_positive, help="Extract at most N reports")
     ex.set_defaults(handler=_extract_da)
-    sub.add_parser("ingest-primary", help="Pull my Google Form responses").set_defaults(
-        handler=_not_yet(6)
+    sub.add_parser("lake-push", help="Upload changed lake files to the release").set_defaults(
+        handler=_lake_push
     )
+    pull = sub.add_parser("lake-pull", help="Restore bronze tables and manifest from the release")
+    pull.add_argument("--pdfs", action="store_true", help="Also restore every DA PDF (~3 GB)")
+    pull.set_defaults(handler=_lake_pull)
     sub.add_parser("ingest-psa", help="Pull PSA CPI and retail price tables").set_defaults(
         handler=_not_yet(7)
     )
