@@ -26,9 +26,11 @@ from ingestion.common import manifest
 from ingestion.common.manifest import DOWNLOADED, EXTRACTED, FAILED, Entry
 from ingestion.common.storage import Storage
 from ingestion.da_prices import classify
+from ingestion.da_prices.download import DUPLICATE
 from ingestion.da_prices.extract import (
     by_market,
     daily_index,
+    market_matrix,
     market_range,
     ncr_compare,
     ncr_range,
@@ -79,6 +81,7 @@ EXTRACTORS: dict[str, Extractor] = {
     classify.NCR_RANGE: Extractor("1", ncr_range.extract),
     classify.NCR_COMPARE: Extractor("1", ncr_compare.extract),
     classify.NCR_SUMMARY: Extractor("1", ncr_summary.extract),
+    classify.MARKET_MATRIX: Extractor("1", market_matrix.extract),
     classify.PORK_BY_MARKET: Extractor("1", by_market.extract),
     classify.CHICKEN_BY_MARKET: Extractor("1", by_market.extract),
 }
@@ -186,6 +189,9 @@ def extract_pdf(
 
 def extract_one(entry: Entry, storage: Storage, now: datetime) -> Entry | None:
     """Extract one downloaded report. None if none of its price page types can be read yet."""
+    if (entry.status_reason or "").startswith(DUPLICATE):
+        # DA posted another report's file under this link: its rows would carry the wrong date
+        return replace(entry, status=FAILED)
     try:
         with pdfplumber.open(io.BytesIO(storage.read_bytes(entry.lake_path))) as pdf:
             classes = classify.classify_document([classify.page_text(p) for p in pdf.pages])

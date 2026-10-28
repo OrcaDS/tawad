@@ -22,6 +22,7 @@ from ingestion.common.manifest import DISCOVERED, DOWNLOADED, EXTRACTED, FAILED,
 from ingestion.common.storage import Storage
 
 logger = logging.getLogger(__name__)
+DUPLICATE = "same bytes as"  # status reason of a file identical to another report's
 
 TIMEOUT_SECONDS = 60
 Fetch = Callable[[str], bytes]
@@ -101,7 +102,7 @@ def _download_one(entry: Entry, storage: Storage, fetch: Fetch, known: dict[str,
     storage.write_bytes(path, data)
     digest = hashlib.sha256(data).hexdigest()
     twin = known.get(digest)
-    reason = f"same bytes as {twin}" if twin and twin != entry.file_name else None
+    reason = f"{DUPLICATE} {twin}" if twin and twin != entry.file_name else None
     return replace(
         entry,
         lake_path=path,

@@ -175,6 +175,17 @@ def test_a_broken_pdf_fails_without_stopping_the_run(storage: LocalStorage) -> N
     assert result[DAILY_INDEX].status == EXTRACTED
 
 
+def test_a_copy_of_another_report_is_never_extracted(storage: LocalStorage) -> None:
+    # May 8, 2019: DA linked the May 10 report's file
+    entry = _entry(storage, "dpi_2026-10-24_p7-8.pdf", date(2026, 10, 23))
+    twin = replace(entry, status_reason="same bytes as Daily-Price-Index-October-24-2026.pdf")
+    for redo in (False, True):
+        (result,) = extract_pending(storage, [twin], redo=redo)
+        assert (result.status, result.status_reason) == (FAILED, twin.status_reason)
+        assert not storage.exists(table_path(twin))
+        twin = result
+
+
 def test_redo_and_series_filter(storage: LocalStorage) -> None:
     entry = _entry(storage, "dpi_2026-10-24_p7-8.pdf", date(2026, 10, 24))
     (done,) = extract_pending(storage, [entry])

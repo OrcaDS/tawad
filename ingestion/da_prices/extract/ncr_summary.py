@@ -27,7 +27,7 @@ from ingestion.da_prices.extract.items import Item, Unsupported
 
 Row = Sequence[str | None]
 
-_FOOTER = re.compile(r"^(markets covered|notes?\b|source)", re.IGNORECASE)
+FOOTER = re.compile(r"^(markets covered|notes?\b|source)", re.IGNORECASE)
 
 PRICES = {
     "prevailing": "price_prevailing_raw",
@@ -79,7 +79,7 @@ def items_from_table(
             continue
         values = {field: row[i] for field, i in names.items()}
         name = (values["commodity_raw"] or "").strip()
-        if _FOOTER.match(name):
+        if FOOTER.match(name):
             break
         spans: list[list[str]] = []  # price fields under each cell (None: merged to the left)
         for field, i in price_columns:

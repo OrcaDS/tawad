@@ -26,6 +26,7 @@ Weekly reports use the week's last day as `report_date` and its first day as `pe
 
 ## Downloads
 
+- **One link carries another report's file.** `Price-Watch-May-8-2019.pdf` has the same bytes as `Price-Watch-May-10-2019.pdf`. The downloader marks it `same bytes as …`, and extraction marks it failed with that reason instead of reading May 10's prices as May 8's.
 - DA's server takes about 20 s to send each PDF (0.3 to 1.7 MB), on top of the 5 s gap between requests. A full backfill takes about 20 hours. It runs newest first and can be stopped and resumed at any point.
 
 ## Page types (checked 2026-10-26 on all 2,877 files)
@@ -176,3 +177,20 @@ One commodity per page: two pork pages (`FRESH & FROZEN PORK KASIM/PIGUE`, `… 
 - **Markers kept raw:** `NONE` (1,595), `#N/A` (562), `#DIV/0!` (241), `None` (56), `N/A` (33), empty cells (20, DA left them blank), `0.00` (2018 NFA rows). Prices over 999 have a thousands comma (`1,000.00`).
 - **Nameless rows:** 11 rows in Oct 2019 under `NFA RICE` have no name and `None` in every price column (a blank second NFA line). Kept raw.
 - **Matrix strips.** On Oct 10, 2018 (p5–6), Jan 23 and Feb 8, 2019 (p2) the right-hand strip of the per-market matrix (the last market's columns and the NCR columns, no commodity names) is classified `ncr_summary`. Without a COMMODITY column it raises `Unsupported`; those reports wait for `market_matrix`.
+
+## Per-market matrix (`market_matrix`, Feb 2018 → Apr 2020; checked 2026-10-28 on all 367 pages of 292 reports)
+
+`ingestion/da_prices/extract/market_matrix.py` reads one row per commodity and market, plus one NCR-wide row per commodity where the page has the NCR columns. pdfplumber reads each page as one table, and its cells match the page text line for line.
+
+- **Header** takes two rows: `Commodity | Specification | <market> …` on top, and `Prevailing | Low | High` under each market (`… | Average` from Nov 2019, when markets are also numbered: `1. Commonwealth`; the number is dropped). The NCR-wide `Prevailing | Low | High | Average` come last; their headers span both rows, so the cell below them is empty, which tells them from market columns.
+- **Garbled header words** (2018): `revailin | gLow`, `Prevaili | ngLow`, `P\nHigh`. A column's field is matched loosely (`low`, `high`, `aver`, `vail`).
+- **Digits spaced apart** (`5 0.00`, `1 00.00`): the PDF places the first digit apart from the rest. Kept as read; silver removes the spaces.
+- **Markers kept raw:** `#N/A`, `#DIV/0!`, `#VALUE!`, `#REF!` (DA's spreadsheet errors), `N/A`, `0` / `0.00` (2018–19: no price), `( 60.00)`, empty cells.
+- **Category rows** are ALL-CAPS with no price, but some carry formula leftovers (`FISH #DIV/0!`, `MEAT & POULTRY #N/A 0 0`); cells holding only `#DIV/0!`, `#N/A`, `0` or `0.00` still make a category row. In Feb and Oct 2018 the category cell also holds the first spec word of the row below (`MEAT & POULTRY lean` above `Beef Rump | meat/tapadera`); that word is joined to the spec (`lean\nmeat/tapadera`).
+- **Footnote inside the table** (`Markets Covered: …` / `Note: …`, Dec 2019 → Apr 2020) ends the table.
+- **Nameless rows** (34): spreadsheet filler rows under NFA rice (`'' | '' | #N/A | 0.00 | 0.00 | #DIV/0!`). Kept raw.
+- **Continuation pages** with no header (2018–19, the sheet's lower rows) reuse the previous page's header when their rows have as many cells.
+- **Not read yet (26 reports, all `price_watch` Oct 2018 → Sep 2019), raising `Unsupported`:**
+  - *Column strips* (9 reports): the sheet is also cut across, and the right part sits on its own pages with no commodity names (Nov–Dec 2018). Some of these strips are classified `ncr_summary`.
+  - *Market names lost or glued* (11 reports): `Mega Q-mart Pasig` in one cell over six columns (Nov 2018 → Feb 2019). Columns would get the wrong market, so a market whose fields repeat raises.
+  - *First markets glued into the Specification cell* (`Mega Q-mart Pasay Polo\nSpecification\n…`, Dec 2018, Sep 2019) or a missing NCR header (Nov 2018): 6 reports.
