@@ -194,3 +194,11 @@ One commodity per page: two pork pages (`FRESH & FROZEN PORK KASIM/PIGUE`, `… 
   - *Column strips* (9 reports): the sheet is also cut across, and the right part sits on its own pages with no commodity names (Nov–Dec 2018). Some of these strips are classified `ncr_summary`.
   - *Market names lost or glued* (11 reports): `Mega Q-mart Pasig` in one cell over six columns (Nov 2018 → Feb 2019). Columns would get the wrong market, so a market whose fields repeat raises.
   - *First markets glued into the Specification cell* (`Mega Q-mart Pasay Polo\nSpecification\n…`, Dec 2018, Sep 2019) or a missing NCR header (Nov 2018): 6 reports.
+
+## Price text in silver (`parse_price`, surveyed 2026-10-28 over all 888,212 bronze rows)
+- 61 distinct shapes of price text once digits are collapsed. 1.5 M cells are plain `53.38`; everything else is listed in the unit test in `transform/models/silver/silver.yml`.
+- **Read as prices:** digits split by the PDF (`2 7.00`, `5 .00`; 2018–20 matrices), thousands commas, footnote stars before or after (`**35.00`, `50.00***`), and parentheses (`( 50.00)`: Jul–Aug 2019 matrices and 2021–22 grids print the prevailing price in brackets between low and high).
+- **Stray letters** that bled in from the next cell are dropped when they touch a number (`g 60`, `kg 60`, `e 5`, `E160.00`, `145.00N`, `90.00g`; 11 cells).
+- **Missing (NULL):** `0`/`0.00`, `n/a` and case variants, `#N/A`, `#DIV/0!`, `#VALUE!`, `#REF!`, `####`, `-`, `(-)`, `NONE`/`None`, `n/m`, `N/I`, blank, `NO MONITORING ACTIVITY CONDUCTED`, and `NOT AVAILABLE` with typos (`AVAILABKE`, `AVALABLE`, `OT AVAILABL`, …).
+- **Garbled overlaps** stay NULL: `NOT AVAILA4B00LE.00` (3 cells, `ncr_compare`), `0.00n/m0.00`. The `warn_unparsed_numbers` test lists any new text with digits that does not parse.
+- 36 rows have low > high (DA typos); kept, flagged with the outlier checks.

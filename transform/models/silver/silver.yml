@@ -2,9 +2,131 @@ version: 2
 
 models:
   - name: stg_da_prices
-    description: DA price rows from bronze, one row per extracted price cell.
+    description: >-
+      DA price rows, one per extracted price cell, latest revision of each report only.
+      Prices are numbers or NULL (never 0). `price` is the headline price: prevailing, else
+      the low/high midpoint, else the weekly average.
     columns:
       - name: report_date
         data_tests: [not_null]
       - name: page_type
         data_tests: [not_null]
+      - name: price_basis
+        description: Which column `price` came from. NULL when the row has no price.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [prevailing, midpoint, average, single]
+
+unit_tests:
+  - name: test_parse_price_cleans_or_nulls_every_raw_shape
+    description: One row per kind of raw price text seen in the lake (2026-10-28 survey).
+    model: stg_da_prices
+    given:
+      - input: source('bronze', 'da_prices')
+        format: csv
+        rows: |
+          report_date,series,revision_rank,price_prevailing_raw
+          2024-01-01,price_monitoring,0,53.38
+          2024-01-02,price_monitoring,0,2 7.00
+          2024-01-03,price_monitoring,0,5 .00
+          2024-01-04,price_monitoring,0,( 50.00)
+          2024-01-05,price_monitoring,0,**35.00
+          2024-01-06,price_monitoring,0,50.00***
+          2024-01-07,price_monitoring,0,100*
+          2024-01-08,price_monitoring,0,"1,000.00"
+          2024-01-09,price_monitoring,0,g 60
+          2024-01-10,price_monitoring,0,kg 60
+          2024-01-11,price_monitoring,0,E160.00
+          2024-01-12,price_monitoring,0,145.00N
+          2024-01-13,price_monitoring,0,0
+          2024-01-14,price_monitoring,0,0.00
+          2024-01-15,price_monitoring,0,n/a
+          2024-01-16,price_monitoring,0,#N/A
+          2024-01-17,price_monitoring,0,#DIV/0!
+          2024-01-18,price_monitoring,0,-
+          2024-01-19,price_monitoring,0,(-)
+          2024-01-20,price_monitoring,0,NOT AVAILABLE
+          2024-01-21,price_monitoring,0,NOT AVAILA4B00LE.00
+          2024-01-22,price_monitoring,0,0.00n/m0.00
+          2024-01-23,price_monitoring,0,N/A q
+          2024-01-24,price_monitoring,0,NONE
+          2024-01-25,price_monitoring,0,#####
+          2024-01-26,price_monitoring,0,
+          2024-01-27,price_monitoring,0,nan
+          2024-01-28,price_monitoring,0,1e5
+    expect:
+      format: csv
+      rows: |
+        report_date,price_prevailing
+        2024-01-01,53.38
+        2024-01-02,27.0
+        2024-01-03,5.0
+        2024-01-04,50.0
+        2024-01-05,35.0
+        2024-01-06,50.0
+        2024-01-07,100.0
+        2024-01-08,1000.0
+        2024-01-09,60.0
+        2024-01-10,60.0
+        2024-01-11,160.0
+        2024-01-12,145.0
+        2024-01-13,
+        2024-01-14,
+        2024-01-15,
+        2024-01-16,
+        2024-01-17,
+        2024-01-18,
+        2024-01-19,
+        2024-01-20,
+        2024-01-21,
+        2024-01-22,
+        2024-01-23,
+        2024-01-24,
+        2024-01-25,
+        2024-01-26,
+        2024-01-27,
+        2024-01-28,
+
+  - name: test_headline_price_and_basis
+    model: stg_da_prices
+    given:
+      - input: source('bronze', 'da_prices')
+        format: csv
+        rows: |
+          report_date,series,revision_rank,price_low_raw,price_high_raw,price_prevailing_raw,price_average_raw
+          2024-02-01,price_monitoring,0,40.00,60.00,55.00,
+          2024-02-02,price_monitoring,0,40.00,60.00,n/a,
+          2024-02-03,price_monitoring,0,50.00,50.00,,
+          2024-02-04,weekly_avg,0,,,,48.50
+          2024-02-05,price_monitoring,0,40.00,n/a,,
+          2024-02-06,price_monitoring,0,n/a,n/a,n/a,
+    expect:
+      format: csv
+      rows: |
+        report_date,price,price_basis
+        2024-02-01,55.0,prevailing
+        2024-02-02,50.0,midpoint
+        2024-02-03,50.0,single
+        2024-02-04,48.5,average
+        2024-02-05,40.0,single
+        2024-02-06,,
+
+  - name: test_only_latest_revision_kept
+    model: stg_da_prices
+    given:
+      - input: source('bronze', 'da_prices')
+        format: csv
+        rows: |
+          report_date,series,revision_rank,source_file
+          2024-03-01,price_monitoring,0,original.pdf
+          2024-03-01,price_monitoring,1,revised.pdf
+          2024-03-01,daily_index,0,dpi.pdf
+          2024-03-02,price_monitoring,0,next-day.pdf
+    expect:
+      format: csv
+      rows: |
+        report_date,series,source_file
+        2024-03-01,price_monitoring,revised.pdf
+        2024-03-01,daily_index,dpi.pdf
+        2024-03-02,price_monitoring,next-day.pdf

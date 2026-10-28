@@ -13,6 +13,9 @@ test-paths: ["tests"]
 vars:
   lake_root: "../lake"  # overridden by `tawad transform`
 
+on-run-start:
+  - "{{ register_bronze() }}"
+
 flags:
   send_anonymous_usage_stats: false
 

@@ -2,14 +2,13 @@ version: 2
 
 sources:
   - name: bronze
-    description: Raw rows extracted by `tawad extract-da`, all text, exactly as in the source.
+    description: >-
+      Raw rows extracted by `tawad extract-da`, all text, exactly as in the source. Views over
+      the lake's Parquet, created by the `register_bronze` macro at the start of each run.
+    schema: bronze
     tables:
       - name: da_prices
         description: One row per price cell read from a DA report page (project.md §6.3).
-        config:
-          external_location: >-
-            read_parquet('{{ var("lake_root") }}/bronze/tables/da_prices/**/*.parquet',
-            hive_partitioning = true, union_by_name = true)
         columns:
           - name: report_date
             data_tests: [not_null]
