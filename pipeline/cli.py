@@ -135,9 +135,6 @@ def build_parser() -> argparse.ArgumentParser:
     pull = sub.add_parser("lake-pull", help="Restore bronze tables and manifest from the release")
     pull.add_argument("--pdfs", action="store_true", help="Also restore every DA PDF (~3 GB)")
     pull.set_defaults(handler=_lake_pull)
-    sub.add_parser("ingest-primary", help="Pull my Google Form responses").set_defaults(
-        handler=_not_yet(6)
-    )
     sub.add_parser("ingest-psa", help="Pull PSA CPI and retail price tables").set_defaults(
         handler=_not_yet(7)
     )

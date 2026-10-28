@@ -9,8 +9,7 @@
 A batch ETL pipeline built as a **medallion architecture** (bronze → silver → gold) that tracks retail food prices in the Philippines by combining:
 
 1. **Official data:** Department of Agriculture (DA) Bantay Presyo price monitoring reports for Metro Manila markets, published as PDFs at `https://www.da.gov.ph/price-monitoring/` (daily since 2018).
-2. **Primary data:** prices I collect myself every week at my local palengke and sari-sari store, entered through a Google Form that writes to a Google Sheet.
-3. **Enrichment:** PSA OpenSTAT. CPI is used to deflate prices and compare them against official inflation. PSA's monthly retail prices are used as a cross-check against DA.
+2. **Enrichment:** PSA OpenSTAT. CPI is used to deflate prices and compare them against official inflation. PSA's monthly retail prices are used as a cross-check against DA.
 
 The goal is **open data**. DA's prices are scattered across PDFs in many layouts, so this project turns them into one clean, standardized dataset that anyone can download. Gold tables are published as CSV and Parquet, with the data dictionary, on **GitHub Releases** (free, public, versioned), and are also loaded to **BigQuery**. My **Looker Studio** dashboard is a demo showing that the data is usable. It is not part of this repo.
 
@@ -19,7 +18,7 @@ It is also a **portfolio project** for data engineering and analytics roles. Cod
 ## 2. Questions the gold layer must answer
 
 - How have prices of key commodities (rice, pork, chicken, eggs, fish, vegetables) moved over time in Metro Manila markets (2018 → now)?
-- Do prices at my local market track the DA-monitored markets, or diverge? By how much, and for which commodities? (My palengke is **Bicutan Market, Taguig**, which DA itself monitors from 2021-10 on. Compare against DA's Bicutan figures where DA lists the commodity, otherwise against the NCR average.)
+- Do individual DA markets track the NCR average, or diverge? By how much, and for which commodities? (For example **Bicutan Market, Taguig**, which DA monitors from 2021-10 on.)
 - How large are seasonal spikes (Holy Week, Christmas, typhoon season)?
 - How often do monitored prices exceed the suggested retail price (SRP/MSRP) in force on that date?
 - In real (CPI-deflated) terms, which commodities got more expensive fastest?
@@ -28,9 +27,9 @@ It is also a **portfolio project** for data engineering and analytics roles. Cod
 ## 3. Architecture
 
 ```
- DA website (PDFs)     Google Sheet (my form)     PSA OpenSTAT API
-        │                      │                         │
-        ▼                      ▼                         ▼
+ DA website (PDFs)                                PSA OpenSTAT API
+        │                                                │
+        ▼                                                ▼
  ┌──────────────────────────────────────────────────────────────┐
  │  Ingestion (Python, runs in Docker)                          │
  │  discover → download → extract                               │
@@ -73,7 +72,6 @@ DuckDB is the only compute engine. BigQuery serves the gold layer only, so trans
 | Orchestration | GitHub Actions cron (daily) | Runs the pipeline inside the Docker image |
 | Containers | Docker; image published to GitHub Container Registry (GHCR) | |
 | CI | GitHub Actions on every pull request | Lint, tests, dbt build on fixtures, image build |
-| Primary data ingest | Google Sheets API (service account) or published CSV export | Prefer the simplest option that works |
 | Dashboard | Looker Studio, connected to BigQuery | Built by me, outside this repo |
 | Testing | `pytest` for Python, dbt tests for models | |
 | Lint / format | `ruff` | |
@@ -106,8 +104,6 @@ tawad/                            # github.com/OrcaDS/tawad
 │   │   ├── download.py           # fetch PDFs to bronze/files/, skip known hashes
 │   │   ├── classify.py           # identify page type from title text
 │   │   └── extract/              # one small extractor per layout (see §6.3)
-│   ├── primary/
-│   │   └── sheets.py             # my Google Form responses → bronze
 │   ├── psa/
 │   │   └── openstat.py           # CPI + retail price tables → bronze
 │   └── common/
@@ -160,7 +156,6 @@ tawad/                            # github.com/OrcaDS/tawad
 - `bronze/tables/`: extracted rows **as text, exactly as they appear**, plus lineage. No type conversion and no cleaning here.
   ```
   bronze/tables/da_prices/year=2026/month=10/part-<series>-<report_date>-r<revision>.parquet
-  bronze/tables/primary_prices/year=2026/month=10/part-<run_id>.parquet
   bronze/tables/psa_cpi/part-<run_id>.parquet
   bronze/tables/psa_retail/part-<run_id>.parquet
   ```
@@ -187,12 +182,8 @@ Known gaps in DA's archive: 2018-04 → 2018-09 and 2020-05. No date has reports
 - If a PDF or page can't be extracted, mark it `failed` in the manifest with the reason and continue. Never silently drop a file.
 - Record every format change discovered in `docs/parsing_notes.md`.
 
-### 6.4 Primary data (my own collection)
-The Google Form fields are:
-`timestamp, collection_date, store_name, store_type (palengke | sari-sari | supermarket), barangay, city, commodity, specification, unit, price, notes`.
-- **The form isn't built yet.** Build it after milestone 3, with dropdowns for commodity/specification/unit generated from `commodity_map.csv`, so my entries match DA names by design.
-- Pull all responses on each run and rewrite the dataset (the volume is small).
-- No personal data about vendors. Store names only.
+### 6.4 Primary data (dropped 2026-10-28)
+My own weekly prices were dropped: DA already monitors Bicutan Market, so they would mostly repeat DA, as a tiny sample, at a weekly cost. Section number kept so references stay valid.
 
 ### 6.5 PSA OpenSTAT
 - API: PXWeb v1 at `https://openstat.psa.gov.ph/PXWeb/api/v1/en/DB/...`. **Request `"format":"csv"`** (json-stat2 returns broken output). `.` = missing. Read value codes from table metadata; they are not always positional.
@@ -211,10 +202,9 @@ The Google Form fields are:
 - **gold** (designed for Looker Studio: friendly column names, one clear grain per table, pre-computed metrics):
   - `fct_prices`: one row per date × source × series × location × commodity × specification. Includes `price`, `price_basis`, `price_low`, `price_high`, week-over-week change.
   - `dim_commodity`: canonical name, category, origin (local/imported).
-  - `dim_location`: DA markets, the "NCR (aggregate)" location, my stores. City and source type (DA / PSA / primary).
+  - `dim_location`: DA markets and the "NCR (aggregate)" location. City and source type (DA / PSA).
   - `dim_date`: calendar with PH holiday and season flags (Holy Week, Christmas season, typhoon season).
   - `fct_srp_compliance`: each observation joined to the SRP in force **on that date** from `srp_history.csv`. SRP is never a static column (pork MSRP started Mar 2025, was suspended May 2025, and came back Dec 2025 at new levels).
-  - `mart_local_vs_official`: weekly comparison of my prices against the nearest DA market where available, otherwise the NCR aggregate.
   - `mart_real_prices`: **monthly** grain. Real price = nominal ÷ all-items CPI (NCR). Also compare each commodity against food CPI.
   - `mart_da_vs_psa`: monthly DA average vs PSA retail price for matching commodities.
 - `docs/data_dictionary.md` documents every gold table and column, including the source attribution text to show in Looker Studio.
@@ -272,7 +262,7 @@ Build the image and push to GHCR, tagged with the commit SHA and `latest`.
 
 ### 8.3 `daily_pipeline.yml` (scheduled)
 - Runs daily at about 10:00 PHT (02:00 UTC), plus manual `workflow_dispatch`.
-- Pulls the GHCR image and runs `run-all`: discover → download → extract → primary → PSA (weekly) → `dbt build` → export gold to BigQuery (if changed) → publish gold to a GitHub Release (if changed) → reconciliation.
+- Pulls the GHCR image and runs `run-all`: discover → download → extract → PSA (weekly) → `dbt build` → export gold to BigQuery (if changed) → publish gold to a GitHub Release (if changed) → reconciliation.
 - No DuckDB file is persisted between runs; the `lake` release is the only state (`tawad lake-pull` at the start, `tawad lake-push` after a successful build). The release is never marked latest, so "latest" stays the open data.
 - Secrets (service account JSON) live in GitHub Actions secrets, never in the repo. Release uploads use the workflow's `GITHUB_TOKEN` (`contents: write`).
 - GitHub disables scheduled workflows in public repos after 60 days without repo activity. Document this in the README; re-enable as needed.
@@ -285,7 +275,7 @@ I build the dashboard in Looker Studio, connected directly to `palengke_gold` in
 - `docs/data_dictionary.md` lists each table, column, meaning, and the DA/PSA attribution text.
 - A `meta_last_refresh` table records when each gold table was last loaded, for an "as of" note on the dashboard.
 
-Planned pages (for reference): Overview, Trends with seasons shaded, My market vs DA, SRP compliance, Real prices, About/sources.
+Planned pages (for reference): Overview, Trends with seasons shaded, Market vs NCR average, SRP compliance, Real prices, About/sources.
 
 ## 10. Conventions
 
@@ -306,7 +296,7 @@ Work through these in order. At the end of each, stop, summarize what was done, 
 3. **DA ingestion → bronze:** discover, download, classify, extract into local partitioned Parquet, with tests per era. Backfill everything back to 2018 locally.
 4. **Silver + gold dbt models** for the DA data reading the local bronze, with tests passing in CI against fixtures.
 5. **Lake storage:** keep the lake in a GitHub Release (no card needed; chosen over GCS/R2 on 2026-10-28), migrate the local lake, and confirm dbt builds from a pulled copy.
-6. **Primary data:** build the Google Form from the seed, ingest from Google Sheets, merge into the models.
+6. ~~Primary data~~ (dropped 2026-10-28, see §6.4).
 7. **PSA enrichment:** CPI and retail prices; real-price and DA-vs-PSA marts.
 8. **BigQuery export** with sandbox rules, reconciliation, and example queries.
 9. **Automation:** `publish_image.yml` and `daily_pipeline.yml` running end to end in the container, including publishing gold as open data (CSV + Parquet + data dictionary) to a GitHub Release.
@@ -322,12 +312,12 @@ Work through these in order. At the end of each, stop, summarize what was done, 
 - How to download the open data (latest GitHub Release), plus:
   - Attribution: "Source: Department of Agriculture Bantay Presyo reports. Cleaned and standardized by tawad. Not an official DA product." No DA logo or branding.
   - Disclaimer: provided as is; DA's own typos are kept and flagged (`is_outlier`), and parsing may contain errors.
-  - Licenses: code MIT; my own market prices CC BY 4.0; DA-derived tables are Philippine government data (no copyright under RA 8293 §176; commercial users should check with DA); PSA data under PSA's terms.
+  - Licenses: code MIT; DA-derived tables are Philippine government data (no copyright under RA 8293 §176; commercial users should check with DA); PSA data under PSA's terms.
 - 3–5 concrete findings, each backed by a chart.
 - Engineering challenges solved: PDF format drift across ~5 layout eras, messy missing-value tokens, report revisions, commodity and market name standardization, unit normalization, idempotent partitioned writes, keeping CI free of cloud credentials, working within BigQuery sandbox limits.
 - Example BigQuery queries and what they show.
 - CI and container badges (build status, image).
-- Limitations: DA coverage is Metro Manila only, my own sample is small, per-market DA data covers only some years and commodities, and some prices are ranges rather than single values.
+- Limitations: DA coverage is Metro Manila only, per-market DA data covers only some years and commodities, and some prices are ranges rather than single values.
 - How to run it locally, both with `uv` and with Docker.
 - A short "design decisions" section: why medallion layering, why DuckDB does the transformations and BigQuery only serves gold, why the sandbox.
 
