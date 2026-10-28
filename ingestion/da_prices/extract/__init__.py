@@ -32,6 +32,7 @@ from ingestion.da_prices.extract import (
     market_range,
     ncr_compare,
     ncr_range,
+    ncr_summary,
     weekly_avg,
 )
 from ingestion.da_prices.extract.items import Item, Unsupported
@@ -77,6 +78,7 @@ EXTRACTORS: dict[str, Extractor] = {
     classify.MARKET_RANGE: Extractor("1", market_range.extract),
     classify.NCR_RANGE: Extractor("1", ncr_range.extract),
     classify.NCR_COMPARE: Extractor("1", ncr_compare.extract),
+    classify.NCR_SUMMARY: Extractor("1", ncr_summary.extract),
     classify.PORK_BY_MARKET: Extractor("1", by_market.extract),
     classify.CHICKEN_BY_MARKET: Extractor("1", by_market.extract),
 }

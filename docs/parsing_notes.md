@@ -163,3 +163,16 @@ One commodity per page: two pork pages (`FRESH & FROZEN PORK KASIM/PIGUE`, `… 
 - **Markers:** `N/A` (6,009), `n/m` (395), `(-)` (358, "Closed due to disinfection"; kept raw, not split as a range), `#N/A` (13), `N/I` (5).
 - **Header** is `MARKET*` on four Sep 2022 pages.
 - Heading `FRESH & FROZEN LIEMPO` (without `PORK`) on 42 pages.
+
+## NCR summary (`ncr_summary`, Mar 2018 → Aug 2021; checked 2026-10-28 on all 478 pages of 477 reports)
+
+`ingestion/da_prices/extract/ncr_summary.py` reads one NCR-wide row per commodity: 23,691 bronze rows from 474 reports (42 to 52 rows a page; every row gets a category). pdfplumber reads these pages as one clean table each, so the extractor works on its cells.
+
+- **Header** takes two rows: names (`COMMODITY | SPECIFICATION(S) | [Unit |]`, plus a group label over the prices) above the price columns. Until early 2020: `Prevailing | Low | High | Average` (group label `Retail price per kilogram (PhP/kg)`, `Retail Price(Php/kg)` or `2018(A)`). From June 2020: `High | Low | Prevailing` under `Summary`, and a `Unit` column. Columns are mapped by header text; `layout` records both header rows.
+- **Title inside the table.** Late 2019 and Mar–Apr 2020 files put the report title in the table's first cell; the header row is searched for.
+- **Categories** are ALL-CAPS rows with no price. 2019 onwards: `NFA RICE`, `IMPORTED COMMERCIAL RICE`, … 2018–2019 `price_watch`: `RICE` (the NFA rows), `COMMERCIAL` (2018) or `IMPORTED COMMERCIAL` / `COMMERCIAL IMPORTED`, `MEAT & POULTRY`, `VEGETABLES`. They carry over page breaks.
+- **Merged cells (2021).** `NOT AVAILABLE` (1,848 cells) is one cell across all price columns; its text fills each of them. Three times (Jul 27, 2021, `Garlic (Native)`) the merged cell holds one value per column (`300.00 270.00 300.00`); those are split.
+- **Footnote inside the table** (`Markets Covered: …` / `Note: …`, Oct 2019) ends the table; its overflow text otherwise lands in the price columns.
+- **Markers kept raw:** `NONE` (1,595), `#N/A` (562), `#DIV/0!` (241), `None` (56), `N/A` (33), empty cells (20, DA left them blank), `0.00` (2018 NFA rows). Prices over 999 have a thousands comma (`1,000.00`).
+- **Nameless rows:** 11 rows in Oct 2019 under `NFA RICE` have no name and `None` in every price column (a blank second NFA line). Kept raw.
+- **Matrix strips.** On Oct 10, 2018 (p5–6), Jan 23 and Feb 8, 2019 (p2) the right-hand strip of the per-market matrix (the last market's columns and the NCR columns, no commodity names) is classified `ncr_summary`. Without a COMMODITY column it raises `Unsupported`; those reports wait for `market_matrix`.
