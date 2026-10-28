@@ -11,6 +11,7 @@ from ingestion.da_prices.extract.items import Unsupported
 from ingestion.da_prices.extract.layout import Table
 
 FIXTURE = Path(__file__).parent / "fixtures" / "pdfs" / "by_market_2022-12-29_p3-5.pdf"
+PREVAILING = FIXTURE.with_name("by_market_2022-11-28_p4-5.pdf")
 
 
 def _rows() -> list[tuple]:
@@ -33,15 +34,29 @@ def test_heading_is_the_commodity_and_columns_the_specifications() -> None:
     assert rows[-1][:4] == (3, chicken, "Fully-dressed, whole chicken", "Malabon Central Market")
 
 
-def test_prevailing_price_pages_are_not_read_yet() -> None:
-    # 2021-2022: today and last report side by side, which would read as low and high
-    title = "Prevailing Retail Prices of Whole Chicken in NCR Markets\nNovember 28, 2022 (Today)"
+def test_prevailing_pages_keep_only_todays_price() -> None:
+    # Nov 28, 2022 pages 4-5: "Today" and "Last Friday" sub-columns under Fresh and Frozen
+    with pdfplumber.open(PREVAILING) as pdf:
+        rows = extract(list(enumerate(pdf.pages, start=1)))
+    assert len(rows) == 32 * 2 + 32
+    assert {i.layout for _, i in rows} == {"compare"}
+    assert {i.price_low_raw for _, i in rows} == {i.price_high_raw for _, i in rows} == {None}
+    fresh = {
+        i.market_raw: i.price_prevailing_raw for n, i in rows if i.specification_raw == "Fresh"
+    }
+    assert fresh["Trabajo Market"] == "400.00"  # last Friday: 335.00
+    assert fresh["San Andres Market"] == "n/m"  # last Friday: 370.00
+    assert fresh["Pamilihang Lungsod ng Muntinlupa"] == "(-)"  # closed, kept raw
+    assert rows[-1][1].commodity_raw == "FRESH WHOLE CHICKEN"
+
+
+def test_other_titles_are_not_read() -> None:
     table = Table(
         (0, 0, 600, 100),
         [[(0, 0, 600, 50)], [(0, 50, 250, 60), (250, 50, 600, 60)]],
-        [[f"{title}\nFRESH WHOLE CHICKEN"], ["MARKET", "Fully-dressed, whole chicken"]],
+        [["Pork Availability in NCR Markets\nFRESH PORK"], ["MARKET", "Fresh"]],
     )
-    with pytest.raises(Unsupported, match="not a price range page"):
+    with pytest.raises(Unsupported, match="not a price range or prevailing page"):
         items_from_page(5, [], [table])
 
 

@@ -1,11 +1,16 @@
 """Tests for the per-market extractor. Positions follow real 2024-2026 pages."""
 
+from pathlib import Path
+
+import pdfplumber
 import pytest
 
 from ingestion.da_prices.extract.items import Unsupported
 from ingestion.da_prices.extract.layout import Table
-from ingestion.da_prices.extract.market_range import items_from_page
+from ingestion.da_prices.extract.market_range import extract, items_from_page
 from tests.test_extract_layout import chars
+
+FIXTURES = Path(__file__).parent / "fixtures" / "pdfs"
 
 # MARKET, then one column per commodity (cell boxes from May 13, 2024)
 HEADER = ["MARKET", "Pechay Baguio", "Red Onion (Local)", "Sugar (Washed)"]
@@ -62,6 +67,11 @@ def test_single_values_ranges_without_a_dash_and_text_stay_raw() -> None:
     ]
 
 
+def test_closed_market_marker_is_not_a_range() -> None:
+    line = chars("Agora Public Market/San Juan", 46.9, 120) + chars("(-)", 505, 120)
+    assert rows(line) == [("Agora Public Market/San Juan", "Pechay Baguio", None, None, "(-)")]
+
+
 def test_wrapped_cells_join_the_nearest_market_line() -> None:
     page = (
         chars("NOT", 503, 113)  # wrapped above the market's line
@@ -85,12 +95,50 @@ def test_header_after_an_empty_column_and_footer_inside_the_table() -> None:
     ]
 
 
-def test_2022_header_naming_several_commodities_in_one_cell_waits() -> None:
-    merged = (
-        "Pechay Red Onion Sugar\n*Egg (Medium) Ampalaya Tomato Cabbage\nBaguio (Local) (Washed)"
-    )
-    with pytest.raises(Unsupported):
-        items_from_page(2, [], [table([*HEADER[:3], merged])])
+def _grid(name: str) -> list[tuple]:
+    with pdfplumber.open(FIXTURES / name) as pdf:
+        return [
+            (i.market_raw, i.commodity_raw, i.price_low_raw, i.price_prevailing_raw)
+            for _, i in extract([(2, pdf.pages[0])])
+        ]
+
+
+def test_2021_grid_columns_come_from_the_header_word_positions() -> None:
+    # Sep 7, 2021: pdfplumber puts seven commodity names in one header cell
+    rows = _grid("market_grid_2021-09-07_p2.pdf")
+    assert len(rows) == 11 * 10
+    assert [r[1] for r in rows[:10]] == [
+        "Well-milled Rice (Local)",
+        "Tilapia",
+        "Galunggong",
+        "Whole Chicken",
+        "*Egg (Medium)",
+        "Ampalaya",
+        "Tomato",
+        "Cabbage",
+        "Pechay Baguio",
+        "Red Onion (Local)",
+    ]
+    las_pinas = [r[3] for r in rows[:10]]
+    assert las_pinas == [
+        *["40.00", "140.00", "240.00", "155.00", "6.50"],
+        *["85.00", "80.00", "200.00", "150.00", "120.00"],
+    ]
+    quinta = {r[1]: r[3] for r in rows if r[0] == "Quinta Market/Manila"}
+    assert quinta["Galunggong"] == quinta["Red Onion (Local)"] == "NOT AVAILABLE"  # wrapped
+    # one note across the whole row stands for every commodity
+    san_andres = {r[3] for r in rows if r[0] == "San Andres Market/Manila"}
+    assert san_andres == {"NO MONITORING ACTIVITY CONDUCTED"}
+    assert {r[2] for r in rows} == {None}  # single prices, no ranges
+
+
+def test_wrapped_not_level_with_the_grid_header_is_not_a_commodity_name() -> None:
+    # Jul 5, 2022: Guadalupe's "NOT" (over "AVAILABLE") sits beside the header's last line
+    rows = _grid("market_grid_2022-07-05_p2.pdf")
+    assert "Galunggong" in {r[1] for r in rows}
+    guadalupe = {r[1]: r[3] for r in rows if r[0] == "Guadalupe Public Market/Makati"}
+    assert guadalupe["Galunggong"] == "240.00"
+    assert len(rows) == 13 * 10
 
 
 def test_tables_without_a_market_header_give_nothing() -> None:

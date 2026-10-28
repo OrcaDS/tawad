@@ -44,7 +44,10 @@ Weekly reports use the week's last day as `report_date` and its first day as `pe
 | `daily_index` | 2025 → now | "DAILY PRICE INDEX", "(DPI)", "… in the National Capital Region", or a header starting "COMMODITY SPECIFICATION" |
 | `weekly_avg` | 2023-08 → now | "Weekly Average Retail Price …" |
 
-Skipped page types: `infographic`, `stall_count`, `notes`, `image_only`, `unreadable`, `blank`.
+Skipped page types: `infographic`, `stall_count`, `notes`, `image_only`, `unreadable`, `blank`, `overflow`.
+
+- **Text off the page.** Some PDFs place one wide sheet over two pages, shifted, so a page also carries text beyond its edges. `classify.page_text` reads only the text inside the page box, and drops the on-page rest of any run of words that crosses the edge (words under 15 pt apart): on Nov 28, 2022 the chicken page carries the pork page's title past its left edge (its last word crosses the edge; the chicken title starts 42 pt further on), and on Mar 13–15, 2018 a clipped footnote would read `…dents per market)`, a per-market title. Those 2018 pages are now `blank`.
+- **`overflow`:** a page with most of its characters off the page is the cut-off edge of the previous page's sheet. On Oct 4–6, 2021, page 2 is the NCR poster's right strip: prices of "OTHER COMMODITIES" whose names are pictures. It used to read as an `ncr_range` page (11 rows a day without commodity names).
 
 - **One title, several layouts.** From 2018 to 2020, "Retail Prices of Selected Agri-fishery Commodities in Selected Markets in Metro Manila" (and "DAILY PRICE MONITORING [REPORT]") heads the NCR summary, the per-market matrix and the poster. Under those titles, the header row decides: two "prevailing" on one line means the matrix, and 20 or more images means the poster.
 - **Matrix headers are garbled.** pdfplumber reads "PrevailingLow High" (2018) and mixes market names into the header letters (Dec 2019: "Prevailing 1. L C o o w mmonw H e ig a h lth Average"). Two "prevailing" on one line is the reliable test.
@@ -85,11 +88,11 @@ Skipped page types: `infographic`, `stall_count`, `notes`, `image_only`, `unread
 
 ## Daily range reports: `market_range` and `ncr_range` (checked 2026-10-26 on all 1,900 `price_monitoring` files)
 
-`ingestion/da_prices/extract/market_range.py` and `ncr_range.py` read the daily report packets from **Jan 16, 2025 on**: 553 reports, 296,142 bronze rows (248,451 per market, 47,691 NCR-wide). The same packets from Dec 2022 to Jan 2025 have NCR posters instead of tables (below), and until Apr 2024 pork and chicken pages by market (below). From Sep 2021 to Dec 2022 the NCR page compares today's prevailing prices with the last report's (`ncr_compare`, below); those 286 reports land partial until their per-market and pork/chicken pages can be read. A report lands once any of its price page types can be read; the unread types are listed in the manifest (`status_reason = "partial: ncr_range"`) and `extract-da --redo` fills them in later. 46 late-2021 reports wait (posters on both page types, so nothing is readable).
+`ingestion/da_prices/extract/market_range.py` and `ncr_range.py` read the daily report packets from **Jan 16, 2025 on**: 553 reports, 296,142 bronze rows (248,451 per market, 47,691 NCR-wide). The same packets from Dec 2022 to Jan 2025 have NCR posters instead of tables (below), and until Apr 2024 pork and chicken pages by market (below). From Sep 2021 to Dec 2022 the NCR page compares today's prevailing prices with the last report's (`ncr_compare`, below); their per-market grids and pork/chicken pages are read too (below). A report lands once any of its price page types can be read; the unread types are listed in the manifest (`status_reason = "partial: ncr_range"`) and `extract-da --redo` fills them in later. 46 late-2021 reports wait (posters on both page types, so nothing is readable).
 
 **pdfplumber's tables and words can't be trusted on these pages.** Below the header, rows often lose their cell borders and land in one cell, sometimes two markets in one cell. pdfplumber also glues neighbouring cells into one word (`100.00100.00`, `NOT AVAILABLE160.00`). Characters inside a word sit 0.0–0.1 pt apart, separate words at least 1.1 pt, so both extractors place single characters into columns and only then join them into text, with a space at every gap over 0.5 pt (`extract/layout.py`).
 
-### Per market (`market_range`, Dec 2022 → now)
+### Per market (`market_range`, Dec 28, 2022 → now)
 
 - **Header.** The row starting with `MARKET` (after an empty column in some files) names one commodity per column, under `COMMODITY (PHP/KG)`. Each commodity's column runs from its header cell to the next one; only these header boxes come from pdfplumber's table. Header text is kept as pdfplumber reads it, including line breaks and a few garbled names where two lines overlap (`(WCohirtne)` for `Corn (White)`).
 - **Cells.** Until 2025: ranges (`40.00 -44.00`, `150.00-150.00`, sometimes no dash: `360.00 360.00`) or one value when low and high agree. 2026: single prevailing prices. A two-part cell is split into `price_low_raw` / `price_high_raw`; anything else goes to `price_prevailing_raw`.
@@ -97,7 +100,17 @@ Skipped page types: `infographic`, `stall_count`, `notes`, `image_only`, `unread
 - **Footnote inside the table box** (`Source: …`, Aug 19, 2025) ends the table.
 - **DA typos kept raw:** `NOT AVAILABKE`, `NOT AVAILBLE`, `NOT AVAILANBLE`, `NOT AVAILABLE]`, and `#####` (an Excel column too narrow, Feb 2024).
 - **Markets per page** range from 10 to 36: the number of markets grew from 13 (2023) to about 30–36 (2025–2026). 45 market names appear, with renames (`Mandaluyong Public Market` → `… I` and `… II`).
-- **Not read yet (2021-09 → 2022-12):** posters (no `MARKET` header) and grids whose last header cell names several commodities (`Pechay Red Onion Sugar\n*Egg (Medium) …`). These pages raise `Unsupported`: their reports land partial if another page type reads, else wait.
+- **Not read yet (late 2021):** posters (no `MARKET` header). These pages raise `Unsupported`: their reports land partial if another page type reads, else wait.
+
+### Per-market grids (`market_range`, Sep 1, 2021 → Dec 27, 2022; checked on all 282 pages of 286 reports)
+
+"Prevailing Retail Prices of Selected Agri-fishery Commodities per Market": 10 commodities, 8 to 13 markets, one prevailing price per cell. Most column lines are missing, so pdfplumber's header has 4–5 cells, the last naming up to seven commodities, and each name wraps over up to three lines. `market_grid.py` rebuilds the header from word positions: words of one column overlap or sit ≤ 2 pt apart, neighbouring columns ≥ 15 pt apart (merge gap: 6 pt). Names are read top-down (`Well-milled Rice (Local)`, `Whole Chicken`, `*Egg (Medium)`; `*` = price per piece). Prices can be wider than their name, so each column starts halfway into the gap before it. 34,862 rows; on every market line but one the prices in reading order equal the row's cells.
+
+- **Columns:** `Whole Chicken` until mid-2022, then `Sugar (Washed)` as the last column. `Galunggong (Local)` on Jan 4–5, 2022 (DA's heading, kept).
+- **`NO MONITORING ACTIVITY CONDUCTED`** across a whole row (40 cells): kept raw for every commodity of that market.
+- **A wrapped `NOT`** of the first market can sit level with the header's last line (30 pages, 2022); `NOT` / `AVAILABLE` never count as header words.
+- **Known losses (7 cells):** on Jan 10 and 12, 2022 Marikina's `NOT AVAILABLE` is printed on one line touching its neighbours (`145.00NOT AVAILABLE160.00`), so three cells read `145.00N`, `OT AVAILABL`, `E160.00`; on Jul 13, 2022 one `NOT AVAILABL` loses its last letter. Kept raw.
+- **Overflow page (Feb 7 and Feb 25, 2022):** page 3 holds only the Pechay and Red Onion columns, with no market names. Raises `Unsupported`; those 2 reports stay partial.
 
 ### NCR ranges (`ncr_range`, Jan 16, 2025 → now)
 
@@ -133,7 +146,7 @@ Skipped page types: `infographic`, `stall_count`, `notes`, `image_only`, `unread
 - **Panels without prices.** On Oct 5–6, 2021 the OTHER COMMODITIES panel has names but no prices, so it gives no rows (and, since the poster reader now ends the last column at its prices, its names don't join the FRUITS rows).
 - **Known losses:** on Feb 22 and Mar 8, 2022 one price is overprinted inside its row's name (`Imported Round Scad 18N0O.0T0AVAILABLE`), so that item has no price and its name becomes a category (2 rows lost). The `RICE (per kg)` panel title sometimes chains into the rice sub-headings (`(per\nIMPORTED COMMERCIAL RICE`, 48 rows); `IMPORTED` / `LOCAL` stays in the category.
 
-### Pork and chicken by market (`pork_by_market`, `chicken_by_market`, Dec 28, 2022 → Apr 18, 2024; checked on all 942 pages of 314 reports)
+### Pork and chicken by market (`pork_by_market`, `chicken_by_market`, Dec 28, 2022 → Apr 18, 2024; checked on all 942 range pages of 314 reports)
 
 One commodity per page: two pork pages (`FRESH & FROZEN PORK KASIM/PIGUE`, `… LIEMPO`) and one chicken page (`FRESH WHOLE CHICKEN`). Under `PRICE PER KILOGRAM (P/kg)` the header row starts with `MARKET` and names the columns: `Fresh` | `Frozen` for pork, `Fully-dressed, whole chicken` for chicken. The body reads like a `market_range` page, so `by_market.py` reuses that reader; the page heading becomes `commodity_raw` and the column header `specification_raw`. 36,730 rows, 13 to 35 markets per page.
 
@@ -141,5 +154,12 @@ One commodity per page: two pork pages (`FRESH & FROZEN PORK KASIM/PIGUE`, `… 
 - **Off-page text.** Seven pages carry another page's heading beyond the right edge of the page (`FRESH WHOLE CHICKEN` next to `… LIEMPO`). The table box ends inside the page, so it is left out.
 - **Cells** are ranges (`320.00 - 340.00`, sometimes without the dash) or one marker in `price_prevailing_raw`: `N/A` (7,274), `n/m` / `N/M` (1,228, probably "not monitored"), `n/A`, `n/a`. Old-style `0.00` means missing (Jan 2023).
 - **DA typos kept raw:** `3,700.00` for `370.00` (Dec 30, 2022), `N/A q`, and `0.00n/m0.00` (Dec 8, 2023).
-- **Not read yet (Sep 2021 → Dec 27, 2022):** "Prevailing Retail Prices of …" pages (765). Same table, but each column splits into `Today` and `Last Friday` / `This Monday`, so its two values are today's and the last report's price, not a range; `(-)` marks a missing price. Pages whose title doesn't start with `Retail Price Range` raise `Unsupported`.
-- **Misclassified:** on some late-2022 pages (Nov 28, 2022) the previous page's title sits off the left edge and comes first, so a chicken page is typed `pork_by_market`. Only these prevailing pages are affected so far.
+- **Off-page titles.** On Nov 28, 2022 the chicken page also carries the pork page's title beyond its left edge, which used to type it `pork_by_market` (see "Text off the page" above).
+
+### Prevailing pork and chicken by market (Sep 1, 2021 → Dec 27, 2022; checked on all 767 pages of 286 reports)
+
+"Prevailing Retail Prices of Fresh and Frozen Pork Products / Whole Chicken in NCR Markets". Same table as above, but under `MARKET` each column splits into `Today` and the last report (`Yesterday`, `Last Friday`, `This Monday`, rarely `Last Monday`), with a row of dates below: `(Sept. 7, 2021)` until Aug 2022, then `September 01, 2022`. The two values are today's price and the last report's own price, not a range, so only today's is kept, in `price_prevailing_raw`, with `layout = "compare"`. `by_market.py` drops the characters of the sub-header rows and of the non-`Today` sub-columns, then reads the page like a range page. 28,535 rows; every page's values match pdfplumber's own text of its `Today` cells.
+
+- **Markers:** `N/A` (6,009), `n/m` (395), `(-)` (358, "Closed due to disinfection"; kept raw, not split as a range), `#N/A` (13), `N/I` (5).
+- **Header** is `MARKET*` on four Sep 2022 pages.
+- Heading `FRESH & FROZEN LIEMPO` (without `PORK`) on 42 pages.

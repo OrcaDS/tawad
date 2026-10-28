@@ -1,5 +1,8 @@
 """Tests for DA page classification. Lines are real title and header text from DA's PDFs."""
 
+from pathlib import Path
+
+import pdfplumber
 import pytest
 
 from ingestion.da_prices.classify import (
@@ -19,6 +22,7 @@ from ingestion.da_prices.classify import (
     NCR_RANGE,
     NCR_SUMMARY,
     NOTES,
+    OVERFLOW,
     PORK_BY_MARKET,
     STALL_COUNT,
     UNKNOWN,
@@ -28,6 +32,7 @@ from ingestion.da_prices.classify import (
     PageText,
     classify_document,
     classify_page,
+    page_text,
 )
 
 
@@ -207,3 +212,17 @@ def test_skip_pages_are_not_inherited() -> None:
 def test_first_page_without_title_is_unknown() -> None:
     rows = page("Agora Public Market/San Juan 50.00 - 60.00")
     assert classify_document([rows]) == [PageClass(1, UNKNOWN, BY_NONE)]
+
+
+def test_text_off_the_page_is_ignored() -> None:
+    # Nov 28, 2022: the chicken page also carries the pork page's title past its left edge
+    fixture = Path(__file__).parent / "fixtures" / "pdfs" / "by_market_2022-11-28_p4-5.pdf"
+    with pdfplumber.open(fixture) as pdf:
+        types = [c.page_type for c in classify_document([page_text(p) for p in pdf.pages])]
+    assert types == [PORK_BY_MARKET, CHICKEN_BY_MARKET]
+
+
+def test_page_mostly_off_the_page_is_overflow() -> None:
+    # Oct 5, 2021 page 2: the poster's right strip, its names on page 1 or in pictures
+    strip = PageText(("OTHER", "COMMODITIES", "Today Yesterday", "50.00 50.00"), 551, 0, 450)
+    assert classify_page(strip, previous=NCR_COMPARE) == (OVERFLOW, BY_NO_TEXT)

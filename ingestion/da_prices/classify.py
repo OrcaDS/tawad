@@ -3,7 +3,8 @@
 DA's reports changed layout many times (project.md §6.3, docs/parsing_notes.md). Each page is
 classified from its text, in this order:
 
-1. No text at all: ``image_only`` (a picture of a table or poster) or ``blank``.
+1. Text mostly beyond the page's edges: ``overflow`` (the cut-off edge of the previous page's
+   sheet). No text at all: ``image_only`` (a picture of a table or poster) or ``blank``.
 2. Pages to skip: stall counts and footnote-only pages.
 3. The title line. Some titles cover more than one layout (2019-2020 reports reuse one title for
    the NCR summary, the per-market matrix and the poster), so for those the header row decides.
@@ -53,7 +54,8 @@ NOTES = "notes"  # footnotes or market list only
 IMAGE_ONLY = "image_only"  # no text layer, only images (would need OCR)
 UNREADABLE = "unreadable"  # text without a character map: "(cid:39)(cid:36)..." (would need OCR)
 BLANK = "blank"
-SKIP_TYPES = (STALL_COUNT, INFOGRAPHIC, NOTES, IMAGE_ONLY, UNREADABLE, BLANK)
+OVERFLOW = "overflow"  # the cut-off edge of the previous page's sheet; its labels are there
+SKIP_TYPES = (STALL_COUNT, INFOGRAPHIC, NOTES, IMAGE_ONLY, UNREADABLE, BLANK, OVERFLOW)
 
 UNKNOWN = "unknown"
 
@@ -66,6 +68,8 @@ BY_NONE = "none"
 
 TITLE_LINES = 8  # titles sit in the first few text lines
 HEADER_LINES = 12
+LINE_GAP = 3.0  # characters whose tops differ by less share a line (as in extract/layout.py)
+RUN_GAP = 15.0  # words closer than this run on (a sentence); titles side by side sit 40+ pt apart
 POSTER_MIN_IMAGES = 20  # posters carry dozens of food pictures; tables carry a logo or two
 
 
@@ -76,6 +80,7 @@ class PageText:
     lines: tuple[str, ...]  # text lines from the top of the page down
     n_chars: int
     n_images: int
+    n_off_page: int = 0  # characters outside the page box
 
 
 @dataclass(frozen=True)
@@ -175,6 +180,8 @@ def classify_page(page: PageText, previous: str | None = None) -> tuple[str, str
     ``previous`` is the type of the page before it in the same file, used for continuation pages.
     """
     lines = [normalize(line) for line in page.lines if line.strip()]
+    if page.n_off_page > page.n_chars / 2:
+        return OVERFLOW, BY_NO_TEXT  # no text of its own
     if page.n_chars == 0 or not lines:  # some pages hold only whitespace characters
         return (IMAGE_ONLY if page.n_images else BLANK), BY_NO_TEXT
     if _is_unreadable(lines):
@@ -217,7 +224,41 @@ def classify_document(pages: Sequence[PageText]) -> list[PageClass]:
 
 
 def page_text(page: Page) -> PageText:
-    """Build a ``PageText`` from a pdfplumber page (text sorted top to bottom)."""
-    text = page.extract_text() or ""
+    """Build a ``PageText`` from a pdfplumber page (text sorted top to bottom).
+
+    Text off the page is left out (on Nov 28, 2022 the chicken page carries the pork page's
+    title past its left edge), and so is the on-page rest of any run of words that crosses the
+    edge: a clipped sentence could read as a title (2018: "…dents per market)")."""
+    x0, _, x1, _ = page.bbox
+    words = page.extract_words()
+    cut: list[tuple[float, float, float]] = []  # (top, left, right) of runs across the edge
+    for word in words:
+        if not (word["x0"] < x0 < word["x1"] or word["x0"] < x1 < word["x1"]):
+            continue
+        line = sorted((w for w in words if abs(w["top"] - word["top"]) < LINE_GAP), key=_x0)
+        first = last = line.index(word)
+        while last + 1 < len(line) and line[last + 1]["x0"] - line[last]["x1"] < RUN_GAP:
+            last += 1
+        while first > 0 and line[first]["x0"] - line[first - 1]["x1"] < RUN_GAP:
+            first -= 1
+        cut.append((word["top"], line[first]["x0"], line[last]["x1"]))
+
+    def on_page(char: dict) -> bool:
+        return x0 <= (char["x0"] + char["x1"]) / 2 <= x1
+
+    def keep(obj: dict) -> bool:
+        if obj.get("object_type") != "char":
+            return True
+        return on_page(obj) and not any(
+            abs(obj["top"] - top) < LINE_GAP and left <= obj["x0"] and obj["x1"] <= right
+            for top, left, right in cut
+        )
+
+    text = page.filter(keep).extract_text() or ""
     lines = tuple(line for line in text.splitlines() if line.strip())[:HEADER_LINES]
-    return PageText(lines, len(page.chars), len(page.images))
+    n_off_page = sum(not on_page(c) for c in page.chars)
+    return PageText(lines, len(page.chars), len(page.images), n_off_page)
+
+
+def _x0(word: dict) -> float:
+    return word["x0"]
