@@ -77,3 +77,56 @@ seeds:
     columns:
       - name: market
         data_tests: [not_null]
+
+  - name: ph_holidays
+    description: >-
+      Philippine national holidays (regular and special non-working days) 2018-2026, as
+      proclaimed. Generated once with the `holidays` Python library (v0.107); add each new
+      year by hand from the President's proclamation.
+    config:
+      column_types:
+        holiday_date: date
+        holiday_name: varchar
+    columns:
+      - name: holiday_date
+        data_tests: [unique, not_null]
+
+  - name: srp_history
+    description: >-
+      Government price caps on DA-monitored items in Metro Manila: price ceilings (by
+      executive order, mandatory), SRPs and MSRPs (DA, suggested). One row per level, with
+      the dates it was in force (effective_to blank = still in force) and a source link.
+      Blank variant or origin = the cap covers all of them. Researched 2026-10-28 from
+      news reports and DA releases; not every cap since 2018 is here (see the note column
+      and docs/data_dictionary.md).
+    config:
+      column_types:
+        commodity: varchar
+        variant: varchar
+        origin: varchar
+        cap_type: varchar
+        cap_price: double
+        effective_from: date
+        effective_to: date
+        legal_basis: varchar
+        source_url: varchar
+        note: varchar
+    columns:
+      - name: commodity
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('commodity_map')
+                field: commodity
+      - name: cap_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [price_ceiling, srp, msrp]
+      - name: cap_price
+        data_tests: [not_null]
+      - name: effective_from
+        data_tests: [not_null]
+      - name: source_url
+        data_tests: [not_null]

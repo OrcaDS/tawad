@@ -57,6 +57,7 @@ select
     markets_covered,
     source_file,
     page,
+    file_row_number,
     revision_rank,
     extractor_version,
     ingested_at
