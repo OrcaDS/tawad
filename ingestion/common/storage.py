@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
@@ -78,7 +79,15 @@ class LocalStorage:
         tmp = target.with_name(f"{TMP_PREFIX}{uuid.uuid4().hex}-{target.name}")
         try:
             writer(tmp)
-            os.replace(tmp, target)
+            for wait in (0.1, 0.5, 2.0, None):
+                try:
+                    os.replace(tmp, target)
+                    break
+                except PermissionError:  # Windows: a virus scan or indexer briefly holds target
+                    if wait is None:
+                        raise
+                    logger.debug("Retrying replace of %s in %.1f s", path, wait)
+                    time.sleep(wait)
         finally:
             tmp.unlink(missing_ok=True)
 

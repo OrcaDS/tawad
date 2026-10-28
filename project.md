@@ -146,10 +146,10 @@ tawad/                            # github.com/OrcaDS/tawad
 
 ### 6.1 Discover and download (DA) → bronze/files
 - One request to `https://www.da.gov.ph/price-monitoring/` lists every report PDF (~3,400 links, no pagination).
-- Classify each link into a series: `ncr_summary`/`market_range` (Daily Retail Price Range, incl. old Price-Watch), `daily_index`, `weekly_avg`. Skip cigarette reports. Filenames are inconsistent (typos, `-DPI-AFC` variants, several date formats), so confirm the series and report date from the PDF's title text after download.
+- Classify each link into a series from its page section and filename family: `price_watch` (2018–2019), `retail_monitoring` (2019-09 → 2020-01) and `price_monitoring` (2019-10 → now) under Daily Retail Price Range, plus `daily_index` and `weekly_avg`. Skip cigarette reports. Weekly reports use the week's last day as the report date. Filenames are inconsistent (typos, `-DPI-AFC` variants, several date formats), so confirm the series and report date from the PDF's title text after download.
 - **Take the report date from the filename and the title, never from the upload folder** (e.g. Dec 2018 reports sit in `uploads/2019/02/`).
 - Write each PDF untouched to `bronze/files/da/<series>/year=YYYY/month=MM/<original_filename>`, and record source URL, download timestamp, file hash, series, report date, revision rank, and status in the manifest.
-- **Revisions:** `Revised-…`, `2nd-Revision-…`, `Updated-…`, `Final-Version` files replace the original for the same series and date. Keep all files in bronze; silver keeps only the latest revision.
+- **Revisions:** `Revised-…`, `2nd-Revision-…`, `Updated-…`, `Final-Version` files replace the original for the same series and date. DA swaps the link on the page rather than listing both, so the manifest keeps every file ever seen and ranks revisions across all of them. Keep all files in bronze; silver keeps only the latest revision.
 - Downloads must be idempotent: skip files whose hash is already in the manifest.
 - Be polite: descriptive User-Agent (no personal email), 5 s between requests, never parallel requests.
 - Backfill: support a `--since YYYY-MM-DD` flag. Target: everything back to 2018-02.
@@ -178,7 +178,7 @@ Recon (`docs/recon.md` §2) mapped the layout eras by quarterly sampling. There 
 | D. Daily Price Index | 2025-04 → now | commodity, specification, (unit), prevailing | NCR |
 | E. Weekly average | 2023-08 → now | commodity, specification, unit, weekly average | NCR |
 
-Known gaps in DA's archive: 2018-04 → 2018-09 and 2020-05. Late 2019 has overlapping series for the same dates, so silver applies a series priority rule.
+Known gaps in DA's archive: 2018-04 → 2018-09 and 2020-05. No date has reports from more than one daily-range series (checked 2026-10-24), so no series priority rule is needed.
 
 - `classify.py` picks the extractor for each **page** from its title text. Each extractor returns rows of raw cell text.
 - Bronze row: `report_date`, `series`, `layout`, `page_type`, `market_raw` (NULL for NCR rows), `category_header_raw`, `commodity_raw`, `specification_raw`, `unit_raw`, `price_low_raw`, `price_high_raw`, `price_prevailing_raw`, `price_average_raw`, `markets_covered`, `source_file`, `page`, `revision_rank`, `extractor_version`, `ingested_at`.
