@@ -117,6 +117,26 @@ def _transform(args: argparse.Namespace, settings: Settings) -> int:
     return 0 if result.success else 1
 
 
+def _export_bq(args: argparse.Namespace, settings: Settings) -> int:
+    """Export gold from DuckDB to Parquet and load what is due to BigQuery."""
+    from google.cloud import bigquery  # slow import; only this command needs it
+
+    from warehouse import export_to_bigquery as bq
+
+    if not settings.gcp_project_id:
+        logger.error("GCP_PROJECT_ID is not set")
+        return 2
+    exports = bq.export_gold(
+        settings.duckdb_path,
+        settings.lake_root / "gold",
+        bq.gold_tables(),
+    )
+    client = bigquery.Client(project=settings.gcp_project_id)
+    return bq.export_to_bigquery(
+        client, f"{settings.gcp_project_id}.{settings.bq_dataset}", exports, force=args.force
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tawad", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -148,9 +168,9 @@ def build_parser() -> argparse.ArgumentParser:
         handler=_ingest_psa
     )
     sub.add_parser("transform", help="dbt build: silver and gold").set_defaults(handler=_transform)
-    sub.add_parser("export-bq", help="Load gold tables to BigQuery").set_defaults(
-        handler=_not_yet(8)
-    )
+    bqp = sub.add_parser("export-bq", help="Load gold tables to BigQuery (about monthly)")
+    bqp.add_argument("--force", action="store_true", help="Reload every table now")
+    bqp.set_defaults(handler=_export_bq)
     sub.add_parser("run-all", help="Run every stage in order").set_defaults(handler=_not_yet(9))
     return parser
 
