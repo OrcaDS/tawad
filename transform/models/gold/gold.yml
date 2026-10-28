@@ -62,6 +62,39 @@ models:
       - name: is_above_cap
         data_tests: [not_null]
 
+  - name: mart_real_prices
+    description: >-
+      One row per month x DA item: DA's NCR-wide monthly average, nominal and in 2018 pesos
+      (NCR all-items CPI), with NCR food CPI alongside.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "month || '|' || commodity_id"
+    columns:
+      - name: month
+        data_tests: [not_null]
+      - name: commodity_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_commodity')
+                field: commodity_id
+
+  - name: mart_da_vs_psa
+    description: >-
+      One row per month x PSA item mapped to a DA commodity: DA's NCR monthly price next to
+      PSA's NCR retail price.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "month || '|' || psa_commodity"
+    columns:
+      - name: month
+        data_tests: [not_null]
+      - name: commodity
+        data_tests: [not_null]
+
   - name: dim_commodity
     columns:
       - name: commodity_id
@@ -82,6 +115,51 @@ models:
         data_tests: [unique, not_null]
 
 unit_tests:
+  - name: test_da_vs_psa_matches_origin_and_skips_frozen
+    description: >-
+      Garlic matches only the origin PSA names; frozen pork is left out of DA's average;
+      a month only PSA covers keeps DA NULL.
+    model: mart_da_vs_psa
+    given:
+      - input: ref('psa_commodity_map')
+        format: csv
+        rows: |
+          psa_commodity,commodity,origin
+          "GARLIC, IMPORTED, 1 KG",Garlic,imported
+          "FRESH PORK, KASIM, 1 KG",Pork kasim (shoulder),
+      - input: ref('dim_commodity')
+        format: csv
+        rows: |
+          commodity_id,commodity,variant,origin
+          g_imp,Garlic,,imported
+          g_loc,Garlic,,local
+          k,Pork kasim (shoulder),,
+          k_frz,Pork kasim (shoulder),frozen,
+      - input: ref('mart_real_prices')
+        format: csv
+        rows: |
+          month,commodity_id,price_nominal,days_priced
+          2026-09-01,g_imp,120,20
+          2026-09-01,g_loc,300,20
+          2026-09-01,k,340,20
+          2026-09-01,k_frz,250,20
+      - input: ref('stg_psa_retail')
+        format: csv
+        rows: |
+          geo,psa_commodity,month,price
+          NCR,"GARLIC, IMPORTED, 1 KG",2026-09-01,125
+          PH,"GARLIC, IMPORTED, 1 KG",2026-09-01,999
+          NCR,"FRESH PORK, KASIM, 1 KG",2026-09-01,336.42
+          NCR,"FRESH PORK, KASIM, 1 KG",2026-08-01,330
+          NCR,"FRESH PORK, KASIM, 1 KG",2026-07-01,
+    expect:
+      format: csv
+      rows: |
+        month,psa_commodity,da_price,psa_price,da_minus_psa
+        2026-09-01,"GARLIC, IMPORTED, 1 KG",120,125,-5
+        2026-09-01,"FRESH PORK, KASIM, 1 KG",340,336.42,3.58
+        2026-08-01,"FRESH PORK, KASIM, 1 KG",,330,
+
   - name: test_fct_prices_keeps_one_row_per_grain
     description: >-
       Priced row beats unpriced; the main table beats a detail page; else the row DA

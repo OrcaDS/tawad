@@ -1,6 +1,6 @@
 # Palengke Price Tracker (tawad)
 
-A medallion-architecture data pipeline (bronze → silver → gold) tracking Metro Manila retail food prices from DA Bantay Presyo reports, PSA OpenSTAT, and my own weekly market checks at Bicutan Market. Gold tables are served from BigQuery to a Looker Studio dashboard.
+A medallion-architecture data pipeline (bronze → silver → gold) tracking Metro Manila retail food prices from DA Bantay Presyo reports and PSA OpenSTAT. Gold tables are served from BigQuery to a Looker Studio dashboard.
 
 > Work in progress. The full portfolio write-up arrives in milestone 11. See `project.md` for the brief and `docs/recon.md` for source research.
 

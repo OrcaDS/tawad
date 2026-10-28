@@ -3,7 +3,7 @@ version: 2
 sources:
   - name: bronze
     description: >-
-      Raw rows extracted by `tawad extract-da`, all text, exactly as in the source. Views over
+      Raw rows from `tawad extract-da` and `tawad ingest-psa`, all text, exactly as in the source. Views over
       the lake's Parquet, created by the `register_bronze` macro at the start of each run.
     schema: bronze
     tables:
@@ -20,4 +20,18 @@ sources:
           - name: source_file
             data_tests: [not_null]
           - name: revision_rank
+            data_tests: [not_null]
+      - name: psa_cpi
+        description: >-
+          PSA OpenSTAT CPI by commodity group (2018 = 100), Philippines and NCR, one row per
+          table cell, as `tawad ingest-psa` pulled it (project.md §6.5).
+        columns:
+          - name: period_raw
+            data_tests: [not_null]
+      - name: psa_retail
+        description: >-
+          PSA OpenSTAT monthly retail prices of agricultural commodities (11 tables),
+          Philippines and NCR, one row per table cell.
+        columns:
+          - name: period_raw
             data_tests: [not_null]

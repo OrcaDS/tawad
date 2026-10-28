@@ -12,7 +12,7 @@ Join facts to dimensions on the `_id` columns and on `price_date = calendar_date
 >
 > Holidays: Philippine proclamations, via the `holidays` Python library.
 
-PSA attribution is added with the PSA tables (milestone 7).
+> Consumer price index and PSA retail prices: Philippine Statistics Authority (PSA), OpenSTAT, https://openstat.psa.gov.ph/. Compiled and processed by this project.
 
 ## fct_prices
 
@@ -21,7 +21,7 @@ PSA attribution is added with the PSA tables (milestone 7).
 | Column | Type | Meaning |
 |---|---|---|
 | price_date | date | Date of the DA report (from its title, not its upload folder). |
-| source | text | `DA` (Kurt's own prices are added at milestone 6). |
+| source | text | `DA`. |
 | series | text | DA report series: `price_watch` (2018–19), `retail_monitoring` (2019–20), `price_monitoring` (2019→), `daily_index` (2025→, DA's daily price index, NCR-wide), `weekly_avg` (2023→, weekly average). Series overlap for the NCR-wide figure, so filter on one series per chart. |
 | location_id | text | → `dim_location`. |
 | commodity_id | text | → `dim_commodity`. |
@@ -53,6 +53,38 @@ When DA prints the same item twice for one market and day (about 0.7% of rows), 
 | is_outlier | boolean | As in `fct_prices`. |
 
 Caps covered (see `transform/seeds/srp_history.csv` for dates and source links): EO 124 pork and chicken ceilings (Feb–Apr 2021), red onion SRP (Dec 2022–Jan 2023), EO 39 rice ceilings (Sep–Oct 2023), imported rice MSRP (Jan 2025–May 2026), EO 118 imported rice ceiling (May–Jun 2026), pork MSRP (Mar–May 2025, and from Dec 2025), onion MSRP (from Dec 2025). Not covered yet: DA's April 2021 SRP on imported pork (end date unknown) and caps before 2021. A cap with a blank variant or origin applies to all of them (e.g. the pork MSRP is applied to frozen pork too).
+
+## mart_real_prices
+
+**Grain:** one row per month × DA item (`commodity_id`), for DA's NCR-wide figure, from 2018-02.
+
+| Column | Type | Meaning |
+|---|---|---|
+| month | date | First day of the month. |
+| commodity_id | text | → `dim_commodity`. |
+| price_nominal | number | Average of DA's daily NCR-wide prices that month, in pesos of that month. Outliers and the `weekly_avg` series (it repeats the daily reports) are left out. |
+| days_priced | integer | Report days behind the average. |
+| cpi_all_items | number | PSA consumer price index, NCR, all items (2018 = 100). NULL for the latest month or so: PSA publishes about a month later. |
+| cpi_food | number | PSA consumer price index, NCR, food (2018 = 100). Compare an item's price trend with this to see if it rose faster than food overall. |
+| price_real_2018 | number | `price_nominal × 100 / cpi_all_items`: the price in 2018 pesos, so months can be compared after inflation. |
+
+## mart_da_vs_psa
+
+**Grain:** one row per month × PSA retail item that matches a DA commodity (35 items, mapped in `transform/seeds/psa_commodity_map.csv`), NCR, from 2018-01.
+
+| Column | Type | Meaning |
+|---|---|---|
+| month | date | First day of the month. |
+| psa_commodity | text | PSA's item name, e.g. `FRESH PORK, KASIM, 1 KG`. |
+| commodity | text | DA canonical commodity it matches (→ `dim_commodity.commodity`). |
+| origin | text | `local` or `imported` when PSA names the origin (garlic only); NULL = DA's origins are averaged. |
+| da_price | number | DA's NCR-wide monthly price for the commodity (from `mart_real_prices`). DA's variants (sizes, brands, colours) are averaged with equal weight; frozen items are left out because PSA prices fresh meat and fish. NULL = no DA price that month. |
+| da_days_priced | integer | Report days behind DA's price. |
+| psa_price | number | PSA's monthly NCR retail price. NULL = no PSA price that month. |
+| da_minus_psa | number | `da_price − psa_price`. |
+| da_minus_psa_pct | number | Same as a fraction of the PSA price (−0.05 = DA 5% lower). |
+
+The two sources mostly agree: for 26 of the 35 items the median monthly gap is within ±5% (2026-10 data). DA runs lower for fish and squid (6–28%) and for pork kasim (7%). Local garlic is the exception (DA about 20% above PSA's "native" garlic), so DA's "local" and PSA's "native" garlic may not be the same product.
 
 ## dim_commodity
 

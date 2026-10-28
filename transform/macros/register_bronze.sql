@@ -11,4 +11,8 @@ select * from read_parquet(
     '{{ var("lake_root") }}/bronze/tables/da_prices/**/*.parquet',
     hive_partitioning = true, union_by_name = true, file_row_number = true
 );
+create or replace view bronze.psa_cpi as
+select * from read_parquet('{{ var("lake_root") }}/bronze/tables/psa_cpi/*.parquet');
+create or replace view bronze.psa_retail as
+select * from read_parquet('{{ var("lake_root") }}/bronze/tables/psa_retail/*.parquet');
 {%- endmacro %}

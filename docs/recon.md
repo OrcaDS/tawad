@@ -144,7 +144,11 @@ Daily `Basmati Rice` / `Glutinous Rice` / `Jasponica/Japonica Rice` vs weekly `B
 API: PXWeb v1, `https://openstat.psa.gov.ph/PXWeb/api/v1/en/DB/...`. GET a table for its metadata, POST a query to get data.
 
 - **Use `"format":"csv"`.** `json-stat2` returned one bogus value (`[1.0]`) for a 40-cell query.
-- Missing values come back as `.` and must become NULL.
+- Missing values come back as `.` and must become NULL. `..` also appears (checked 2026-10-28: CPI and some retail cells); same meaning.
+- The CSV is **Windows-1252**, not UTF-8 (`purée`, `café` in CPI group names).
+- The CSV is wide: one column per period (`2018 Jan` in CPI, `2018 January` in retail), plus `Ave` / `Annual` columns.
+- Geolocation texts differ by table (`PHILIPPINES` / `..National Capital Region (NCR)` in CPI, `Philippines` / `..NCR - National Capital Region` in retail). Matching `NCR` must be a whole word: CPI also has `Areas Outside National Capital Region (AONCR)`.
+- Only about 70 of the 197 retail items have NCR prices (2026-10-28); the rest are all `..`.
 - Value codes are not always positional. Geolocation uses PSGC-style codes (NCR = `130000000` in retail tables, `1` in the CPI table). Always read codes from the table metadata.
 
 ### Tables to use

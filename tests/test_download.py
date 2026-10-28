@@ -133,6 +133,18 @@ def test_polite_fetcher_spaces_requests_and_sets_user_agent() -> None:
     assert requests[0].get_header("User-agent") == "TestAgent/1"
 
 
+def test_polite_fetcher_posts_json() -> None:
+    requests: list[urllib.request.Request] = []
+
+    def opener(request: urllib.request.Request, timeout: float) -> bytes:
+        requests.append(request)
+        return b"ok"
+
+    PoliteFetcher("T", 5, opener=opener)("https://x/t.px", b'{"a": 1}')
+    assert requests[0].get_method() == "POST" and requests[0].data == b'{"a": 1}'
+    assert requests[0].get_header("Content-type") == "application/json"
+
+
 def test_polite_fetcher_waits_after_a_failure_too() -> None:
     now = [0.0]
     sleeps: list[float] = []
