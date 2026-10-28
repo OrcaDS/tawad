@@ -1,6 +1,7 @@
 -- DA price rows from bronze: prices parsed to numbers (missing -> NULL, never 0), one
 -- headline price per row, and only the latest revision of each report. Commodity and
--- market names are mapped to canonical ones downstream (seeds).
+-- market names map to canonical ones through the seeds; rows the commodity seed marks
+-- with an exclude_reason (e.g. a category header read as a name) are left out.
 with parsed as (
     select
         *,
@@ -19,10 +20,18 @@ select
     series,
     layout,
     page_type,
-    market_raw,
-    category_header_raw,
-    commodity_raw,
-    specification_raw,
+    mk.market,
+    mk.city,
+    cm.commodity,
+    cm.variant,
+    cm.origin,
+    cm.category,
+    cm.unit as unit_normalized,
+    cm.unit = 'kg' as is_per_kg,
+    p.market_raw,
+    p.category_header_raw,
+    p.commodity_raw,
+    p.specification_raw,
     unit_raw,
     price_low,
     price_high,
@@ -51,4 +60,10 @@ select
     revision_rank,
     extractor_version,
     ingested_at
-from parsed
+from parsed as p
+left join {{ ref('commodity_map') }} as cm
+    on cm.category_header_raw is not distinct from {{ normalize_name('p.category_header_raw') }}
+    and cm.commodity_raw is not distinct from {{ normalize_name('p.commodity_raw') }}
+    and cm.specification_raw is not distinct from {{ normalize_name('p.specification_raw') }}
+left join {{ ref('markets') }} as mk on mk.market_raw is not distinct from p.market_raw
+where cm.exclude_reason is null

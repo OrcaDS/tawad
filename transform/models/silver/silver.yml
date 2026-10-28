@@ -23,6 +23,10 @@ unit_tests:
     description: One row per kind of raw price text seen in the lake (2026-10-28 survey).
     model: stg_da_prices
     given:
+      - input: ref('commodity_map')
+        rows: []
+      - input: ref('markets')
+        rows: []
       - input: source('bronze', 'da_prices')
         format: csv
         rows: |
@@ -91,6 +95,10 @@ unit_tests:
   - name: test_headline_price_and_basis
     model: stg_da_prices
     given:
+      - input: ref('commodity_map')
+        rows: []
+      - input: ref('markets')
+        rows: []
       - input: source('bronze', 'da_prices')
         format: csv
         rows: |
@@ -115,6 +123,10 @@ unit_tests:
   - name: test_only_latest_revision_kept
     model: stg_da_prices
     given:
+      - input: ref('commodity_map')
+        rows: []
+      - input: ref('markets')
+        rows: []
       - input: source('bronze', 'da_prices')
         format: csv
         rows: |

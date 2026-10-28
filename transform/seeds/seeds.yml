@@ -1,0 +1,79 @@
+version: 2
+
+seeds:
+  - name: commodity_map
+    description: >-
+      DA name -> canonical commodity. Keyed on (category header, commodity, specification)
+      as normalized by the `normalize_name` macro, because imported vs local rice is only
+      in the header. Category comes from here, never from PDF headers. A row with an
+      exclude_reason is not a price (e.g. a header read as a name) and is left out of silver.
+    config:
+      column_types:
+        category_header_raw: varchar
+        commodity_raw: varchar
+        specification_raw: varchar
+        commodity: varchar
+        variant: varchar
+        origin: varchar
+        category: varchar
+        unit: varchar
+        exclude_reason: varchar
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "coalesce(category_header_raw, '') || '|' || coalesce(commodity_raw, '') || '|' || coalesce(specification_raw, '')"
+    columns:
+      - name: commodity
+        description: Shopper-level name that stays the same across DA's eras.
+        data_tests:
+          - not_null:
+              config:
+                where: exclude_reason is null
+      - name: variant
+        description: DA's sub-item, when it splits one (fresh/frozen, brand, colour, variety, size).
+      - name: origin
+        description: local or imported, when DA says so; blank otherwise.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [local, imported]
+      - name: category
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Rice
+                  - Corn
+                  - Fish
+                  - Pork
+                  - Beef
+                  - Other meat
+                  - Poultry
+                  - Eggs
+                  - Lowland vegetables
+                  - Highland vegetables
+                  - Spices
+                  - Fruits
+                  - Legumes
+                  - Other basic commodities
+      - name: unit
+        description: What one price buys. Eggs are per piece and cooking oil per bottle (size in the name).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [kg, piece, bottle]
+
+  - name: markets
+    description: DA market spelling -> canonical market and city. A blank market_raw is the NCR-wide figure.
+    config:
+      column_types:
+        market_raw: varchar
+        market: varchar
+        city: varchar
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "coalesce(market_raw, '')"
+    columns:
+      - name: market
+        data_tests: [not_null]
