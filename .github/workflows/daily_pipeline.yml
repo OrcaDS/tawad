@@ -1,0 +1,49 @@
+name: Daily pipeline
+
+# GitHub turns off schedules in public repos after 60 days without activity; re-enable
+# under Actions if that happens.
+on:
+  schedule:
+    - cron: "0 2 * * *" # 10:00 Philippine time
+  workflow_dispatch:
+
+permissions:
+  contents: write # lake and open-data releases
+  packages: read
+
+concurrency:
+  group: daily-pipeline # two runs at once would race on the lake release
+  cancel-in-progress: false
+
+jobs:
+  run-all:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare lake folder and BigQuery key
+        run: |
+          mkdir "$RUNNER_TEMP/lake" && chmod 777 "$RUNNER_TEMP/lake" # the image runs as uid 10001
+          printf '%s' "$GCP_SA_KEY" > "$RUNNER_TEMP/gcp-key.json"
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+      # The image has no gh, so lend it the runner's (a static binary); GH_REPO names the repo
+      - name: Run the pipeline in the container
+        run: |
+          docker run --rm \
+            -v "$RUNNER_TEMP/lake:/app/lake" \
+            -v "$RUNNER_TEMP/gcp-key.json:/secrets/gcp-key.json:ro" \
+            -v "$(command -v gh):/usr/local/bin/gh:ro" \
+            -e GH_TOKEN -e GH_REPO="$GITHUB_REPOSITORY" \
+            -e GCP_PROJECT_ID -e GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcp-key.json \
+            "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/tawad-pipeline:latest" run-all
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      - name: Remove the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/gcp-key.json"

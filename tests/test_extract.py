@@ -193,3 +193,11 @@ def test_redo_and_series_filter(storage: LocalStorage) -> None:
     assert extract_pending(storage, [entry], series=PRICE_MONITORING) == [entry]
     (redone,) = extract_pending(storage, [done], redo=True)
     assert redone.status == EXTRACTED
+
+
+def test_report_whose_pdf_is_not_in_the_lake_is_left_alone(storage: LocalStorage) -> None:
+    entry = _entry(storage, "dpi_2026-10-24_p7-8.pdf", date(2026, 10, 24))
+    missing = replace(entry, source_url=entry.source_url + "x", lake_path="bronze/files/gone.pdf")
+    result = {e.source_url: e for e in extract_pending(storage, [entry, missing])}
+    assert result[missing.source_url] == missing
+    assert result[entry.source_url].status == EXTRACTED
