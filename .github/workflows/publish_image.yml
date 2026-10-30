@@ -19,7 +19,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push (tags: commit SHA and latest)
+      - name: Build and push (tags = commit SHA, latest)
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/tawad-pipeline"
           docker build \
