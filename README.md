@@ -29,7 +29,7 @@ Example queries are in [`warehouse/queries/`](warehouse/queries/): foods that ou
 
 The latest [GitHub Release](../../releases/latest) holds the gold tables as Parquet and as CSV (one zip), with `data_dictionary.md`. Source: Department of Agriculture Bantay Presyo reports. Cleaned and standardized by tawad. Not an official DA product. Provided as is: DA's own typos are kept and flagged (`is_outlier`), and parsing may contain errors.
 
-`.github/workflows/daily_pipeline.yml` runs `tawad run-all` in the published image every day at 10:00 Philippine time: pull the lake from the `lake` release, download and extract new DA reports, pull PSA (weekly), `dbt build`, push the lake, load BigQuery (monthly), and publish a new open-data release if gold changed. Nothing is kept between runs except the `lake` release, which stays a prerelease so "Latest" is always the open data. It needs the repository secret `GCP_SA_KEY` (the service account key JSON) and the variable `GCP_PROJECT_ID`.
+`.github/workflows/daily_pipeline.yml` runs `tawad run-all` in the published image every day at 10:00 Philippine time: pull the lake from the `lake` release, download and extract new DA reports, pull PSA (weekly), push the lake, `dbt build`, load BigQuery (monthly), and publish a new open-data release if gold changed. Nothing is kept between runs except the `lake` release, which stays a prerelease so "Latest" is always the open data. It needs the repository secret `GCP_SA_KEY` (the service account key JSON) and the variable `GCP_PROJECT_ID`.
 
 GitHub turns off scheduled workflows in public repositories after 60 days without activity. If the data stops updating, re-enable the workflow under Actions.
 

@@ -54,6 +54,27 @@ def test_run_all_stops_at_first_failing_step(monkeypatch: pytest.MonkeyPatch) ->
     assert main(["run-all"]) == 3
 
 
+def test_psa_due_after_a_week(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    import pyarrow as pa
+
+    from ingestion.common.storage import get_storage
+    from ingestion.psa import openstat
+    from pipeline.cli import _psa_due
+
+    monkeypatch.setenv("LAKE_ROOT", str(tmp_path))
+    settings = load_settings()
+    assert _psa_due(settings)  # never pulled
+    path = openstat.bronze_path("psa_cpi", openstat.CPI_TABLE)
+    for days, due in [(3, False), (8, True)]:
+        row = dict.fromkeys(openstat.SCHEMA.names, "x")
+        row["pulled_at"] = datetime.now(UTC) - timedelta(days=days)
+        table = pa.Table.from_pylist([row], schema=openstat.SCHEMA)
+        get_storage(settings).write_parquet(path, table, openstat.SCHEMA)
+        assert _psa_due(settings) is due
+
+
 def test_cli_config_error_exits_2_without_traceback(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LOG_LEVEL", "VERBOSE")
     assert main(["show-config"]) == 2
