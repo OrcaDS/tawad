@@ -44,7 +44,9 @@ def export_gold(duckdb_path: Path, out_dir: Path, tables: list[str]) -> list[Exp
     """Write each gold table to Parquet in a stable row order, so equal data hashes equal."""
     out_dir.mkdir(parents=True, exist_ok=True)
     exports = []
-    with duckdb.connect(str(duckdb_path), read_only=True) as con:
+    # Not read_only: in run-all, dbt still holds a read-write connection in this process,
+    # and DuckDB refuses a second one to the same file with a different configuration
+    with duckdb.connect(str(duckdb_path)) as con:
         for table in tables:
             path = out_dir / f"{table}.parquet"
             con.execute(

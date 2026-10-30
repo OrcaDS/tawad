@@ -39,6 +39,13 @@ def test_export_hash_is_stable_and_follows_the_data(tmp_path):
     assert bq.export_gold(db, tmp_path / "c", ["g"])[0].sha256 != first.sha256
 
 
+def test_export_works_while_dbt_holds_the_database(tmp_path):
+    db = tmp_path / "t.duckdb"
+    with duckdb.connect(str(db)) as held:  # as dbt's connection stays open within run-all
+        held.execute("CREATE TABLE g AS SELECT 1 AS i")
+        assert bq.export_gold(db, tmp_path / "out", ["g"])[0].rows == 1
+
+
 def test_load_reason():
     assert bq.load_reason(None, "abc", NOW) == "missing"
     assert bq.load_reason(_table(), "abc", NOW) is None
