@@ -174,9 +174,9 @@ def _run_all(args: argparse.Namespace, settings: Settings) -> int:
         ("ingest-da", _ingest_da, da),
         ("extract-da", _extract_da, ex),
         ("ingest-psa", _ingest_psa_if_due, args),
-        # Push the lake once gold builds, so a BigQuery or release hiccup can't lose new PDFs
-        ("transform", _transform, args),
+        # Push before dbt: a failing build (e.g. a new unmapped DA name) must not lose new PDFs
         ("lake-push", _lake_push, args),
+        ("transform", _transform, args),
         ("export-bq", _export_bq, argparse.Namespace(force=False)),
         ("publish-data", _publish_data, args),
     ]
