@@ -11,6 +11,7 @@ lake/
 recon_samples/
 tests/
 docs/
+!docs/data_dictionary.md
 transform/target/
 transform/logs/
 .vscode/

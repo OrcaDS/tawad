@@ -240,7 +240,7 @@ Required dbt tests: `not_null` and `unique` on keys, accepted values for categor
 - Pin the base image to a specific version tag.
 - Single entrypoint with subcommands, e.g.:
   ```
-  docker run --env-file .env ghcr.io/<me>/palengke-pipeline:latest run-all
+  docker run --env-file .env ghcr.io/<me>/tawad-pipeline:latest run-all
   docker run ... ingest-da --since 2018-02-01
   docker run ... transform
   docker run ... export-bq

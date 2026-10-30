@@ -82,13 +82,14 @@ def fetch_listing(fetch: Fetch, settings: Settings) -> str:
     return fetch(settings.da_price_monitoring_url).decode("utf-8", errors="replace")
 
 
-def needs_download(entry: Entry, storage: Storage) -> bool:
-    """New, failed before download, or recorded as downloaded but missing from the lake."""
+def needs_download(entry: Entry, storage: Storage, *, refetch_missing: bool = True) -> bool:
+    """New, failed before download, or (with ``refetch_missing``) recorded as downloaded
+    but missing from the lake."""
     if entry.status == DISCOVERED:
         return True
     if entry.status == FAILED and entry.lake_path is None:
         return True
-    if entry.status in (DOWNLOADED, EXTRACTED):
+    if entry.status in (DOWNLOADED, EXTRACTED) and refetch_missing:
         return entry.lake_path is None or not storage.exists(entry.lake_path)
     return False
 
@@ -125,8 +126,12 @@ def download_pending(
     *,
     since: date | None = None,
     limit: int | None = None,
+    refetch_missing: bool = True,
 ) -> list[Entry]:
     """Download every entry that needs it (newest first), saving the manifest after each.
+
+    ``refetch_missing=False`` is for a lake pulled without PDFs (the daily run): it would
+    otherwise fetch every report again.
 
     Returns the updated entries. Failures are recorded in the manifest and never stop the run.
     """
@@ -135,7 +140,8 @@ def download_pending(
         (
             e
             for e in entries
-            if needs_download(e, storage) and (since is None or e.report_date >= since)
+            if needs_download(e, storage, refetch_missing=refetch_missing)
+            and (since is None or e.report_date >= since)
         ),
         key=lambda e: (e.report_date, e.file_name),
         reverse=True,

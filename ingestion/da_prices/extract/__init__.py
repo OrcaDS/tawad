@@ -229,6 +229,11 @@ def extract_pending(
         for e in entries
         if e.status in statuses and e.lake_path and (series is None or e.series == series)
     ]
+    # A lake pulled without PDFs (the daily run) lacks older files: leave those as they are
+    absent = [e for e in pending if not storage.exists(e.lake_path)]
+    if absent:
+        logger.info("%d reports skipped: their PDF is not in this lake", len(absent))
+        pending = [e for e in pending if e not in absent]
     if limit is not None:
         pending = pending[:limit]
     logger.info("%d reports to extract", len(pending))

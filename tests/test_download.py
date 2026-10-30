@@ -81,6 +81,14 @@ def test_missing_file_is_downloaded_again(storage: LocalStorage, tmp_path: Path)
     assert len(fetch.calls) == 1
 
 
+def test_missing_file_is_left_when_refetch_is_off(storage: LocalStorage, tmp_path: Path) -> None:
+    entries = download_pending(storage, _entries(1), FakeFetch())
+    (tmp_path / "lake" / (entries[0].lake_path or "")).unlink()
+    fetch = FakeFetch()
+    download_pending(storage, entries, fetch, refetch_missing=False)
+    assert fetch.calls == []
+
+
 def test_failures_are_recorded_and_do_not_stop_the_run(storage: LocalStorage) -> None:
     entries = _entries(1, 2, 3)
     url = {e.report_date.day: e.source_url for e in entries}

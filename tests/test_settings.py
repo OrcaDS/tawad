@@ -43,8 +43,15 @@ def test_cli_show_config_succeeds() -> None:
     assert main(["show-config"]) == 0
 
 
-def test_cli_unimplemented_stage_fails_loudly() -> None:
-    assert main(["run-all"]) == 2
+def test_run_all_stops_at_first_failing_step(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pipeline import cli
+
+    def boom(*_):
+        raise AssertionError("ran a step after a failure")
+
+    monkeypatch.setattr(cli, "_lake_pull", lambda *_: 3)
+    monkeypatch.setattr(cli, "_ingest_da", boom)
+    assert main(["run-all"]) == 3
 
 
 def test_cli_config_error_exits_2_without_traceback(monkeypatch: pytest.MonkeyPatch) -> None:

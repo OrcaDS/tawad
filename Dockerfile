@@ -20,6 +20,7 @@ RUN useradd --create-home --uid 10001 pipeline
 WORKDIR /app
 COPY --from=builder --chown=pipeline:pipeline /app/.venv /app/.venv
 COPY transform ./transform
+COPY docs/data_dictionary.md ./docs/
 # dbt's own scratch dirs: keep them out of the (read-only) project dir
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 \
     DBT_TARGET_PATH=/tmp/dbt/target DBT_LOG_PATH=/tmp/dbt/logs

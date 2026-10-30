@@ -11,8 +11,8 @@ import dataclasses
 import json
 import logging
 import sys
-from collections.abc import Callable, Sequence
-from datetime import UTC, date, datetime
+from collections.abc import Sequence
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from config.settings import Settings, load_settings
@@ -23,14 +23,7 @@ from ingestion.psa import openstat
 
 logger = logging.getLogger("tawad")
 TRANSFORM_DIR = Path("transform")  # the dbt project; commands run from the repo root (or /app)
-
-
-def _not_yet(milestone: int) -> Callable[[argparse.Namespace, Settings], int]:
-    def handler(args: argparse.Namespace, settings: Settings) -> int:
-        logger.error("'%s' is not implemented yet (milestone %d).", args.command, milestone)
-        return 2
-
-    return handler
+PSA_EVERY = timedelta(days=7)  # PSA publishes monthly; a full pull takes ~3 min
 
 
 def _show_config(args: argparse.Namespace, settings: Settings) -> int:
@@ -62,7 +55,14 @@ def _ingest_da(args: argparse.Namespace, settings: Settings) -> int:
     manifest.save(storage, entries)
     if args.discover_only:
         return 0
-    download.download_pending(storage, entries, fetch, since=args.since, limit=args.limit)
+    download.download_pending(
+        storage,
+        entries,
+        fetch,
+        since=args.since,
+        limit=args.limit,
+        refetch_missing=not args.new_only,
+    )
     return 0
 
 
@@ -81,6 +81,23 @@ def _ingest_psa(args: argparse.Namespace, settings: Settings) -> int:
         get_storage(settings), download.make_fetcher(settings), settings.psa_api_base
     )
     return 1 if failed else 0
+
+
+def _psa_due(settings: Settings) -> bool:
+    path = openstat.bronze_path("psa_cpi", openstat.CPI_TABLE)
+    storage = get_storage(settings)
+    if not storage.exists(path):
+        return True
+    last = max(storage.read_parquet(path).column("pulled_at").to_pylist())
+    return datetime.now(UTC) - last >= PSA_EVERY
+
+
+def _ingest_psa_if_due(args: argparse.Namespace, settings: Settings) -> int:
+    if not _psa_due(settings):
+        logger.info("PSA pulled less than %d days ago; skipped", PSA_EVERY.days)
+    elif _ingest_psa(args, settings):  # failed tables keep their last pull; carry on
+        logger.warning("Some PSA tables failed; using their previous pull")
+    return 0
 
 
 def _lake_push(args: argparse.Namespace, settings: Settings) -> int:
@@ -137,6 +154,39 @@ def _export_bq(args: argparse.Namespace, settings: Settings) -> int:
     )
 
 
+def _publish_data(args: argparse.Namespace, settings: Settings) -> int:
+    """Publish gold as a "Latest" GitHub Release (CSV + Parquet), if it changed."""
+    from warehouse import export_to_bigquery as bq
+    from warehouse import publish_data
+
+    out_dir = settings.lake_root / "gold"
+    exports = bq.export_gold(settings.duckdb_path, out_dir, bq.gold_tables())
+    publish_data.publish(exports, out_dir, datetime.now(UTC).date())
+    return 0
+
+
+def _run_all(args: argparse.Namespace, settings: Settings) -> int:
+    """The daily run on a fresh machine: the lake release is the only state."""
+    da = argparse.Namespace(since=None, limit=None, discover_only=False, new_only=True)
+    ex = argparse.Namespace(series=None, redo=False, limit=None)
+    steps = [
+        ("lake-pull", _lake_pull, argparse.Namespace(pdfs=False)),
+        ("ingest-da", _ingest_da, da),
+        ("extract-da", _extract_da, ex),
+        ("ingest-psa", _ingest_psa_if_due, args),
+        # Push the lake once gold builds, so a BigQuery or release hiccup can't lose new PDFs
+        ("transform", _transform, args),
+        ("lake-push", _lake_push, args),
+        ("export-bq", _export_bq, argparse.Namespace(force=False)),
+        ("publish-data", _publish_data, args),
+    ]
+    for name, handler, step_args in steps:
+        logger.info("run-all: %s", name)
+        if code := handler(step_args, settings):
+            return code
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tawad", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -144,13 +194,18 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("show-config", help="Print the effective configuration").set_defaults(
         handler=_show_config
     )
-    da = sub.add_parser("ingest-da", help="Discover, download and extract DA reports")
+    da = sub.add_parser("ingest-da", help="Discover and download DA reports")
     da.add_argument(
         "--since", metavar="YYYY-MM-DD", type=_since, help="Only download reports from this date"
     )
     da.add_argument("--limit", metavar="N", type=_positive, help="Download at most N files")
     da.add_argument(
         "--discover-only", action="store_true", help="Update the manifest without downloading"
+    )
+    da.add_argument(
+        "--new-only",
+        action="store_true",
+        help="Skip reports already downloaded, even if their PDF is not in this lake",
     )
     da.set_defaults(handler=_ingest_da)
     ex = sub.add_parser("extract-da", help="Extract downloaded DA reports into bronze rows")
@@ -171,7 +226,12 @@ def build_parser() -> argparse.ArgumentParser:
     bqp = sub.add_parser("export-bq", help="Load gold tables to BigQuery (about monthly)")
     bqp.add_argument("--force", action="store_true", help="Reload every table now")
     bqp.set_defaults(handler=_export_bq)
-    sub.add_parser("run-all", help="Run every stage in order").set_defaults(handler=_not_yet(9))
+    sub.add_parser("publish-data", help="Release gold as open data if it changed").set_defaults(
+        handler=_publish_data
+    )
+    sub.add_parser("run-all", help="Run every stage in order (the daily run)").set_defaults(
+        handler=_run_all
+    )
     return parser
 
 
