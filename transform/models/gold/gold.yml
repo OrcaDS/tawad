@@ -95,6 +95,20 @@ models:
       - name: commodity
         data_tests: [not_null]
 
+  - name: mart_market_vs_ncr
+    description: >-
+      One row per month x DA market x item: the market's average price next to DA's
+      NCR-wide price over the same days.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "month || '|' || location_id || '|' || commodity_id"
+    columns:
+      - name: ncr_price
+        data_tests: [not_null]
+      - name: days_compared
+        data_tests: [not_null]
+
   - name: dim_commodity
     columns:
       - name: commodity_id
@@ -159,6 +173,38 @@ unit_tests:
         2026-09-01,"GARLIC, IMPORTED, 1 KG",120,125,-5
         2026-09-01,"FRESH PORK, KASIM, 1 KG",340,336.42,3.58
         2026-08-01,"FRESH PORK, KASIM, 1 KG",,330,
+
+  - name: test_market_vs_ncr_compares_same_days_and_series
+    description: >-
+      Only days both are priced in the same series count; outliers and unpriced days are
+      skipped.
+    model: mart_market_vs_ncr
+    given:
+      - input: ref('dim_location')
+        format: csv
+        rows: |
+          location_id,is_aggregate
+          bic,false
+          ncr,true
+      - input: ref('fct_prices')
+        format: csv
+        rows: |
+          price_date,series,location_id,commodity_id,price,is_outlier
+          2024-01-02,price_monitoring,bic,tom,110,false
+          2024-01-02,price_monitoring,ncr,tom,100,false
+          2024-01-03,price_monitoring,bic,tom,130,false
+          2024-01-03,price_monitoring,ncr,tom,100,false
+          2024-01-04,price_monitoring,bic,tom,999,true
+          2024-01-04,price_monitoring,ncr,tom,100,false
+          2024-01-05,price_monitoring,bic,tom,150,false
+          2024-01-05,price_monitoring,ncr,tom,,false
+          2024-01-06,price_monitoring,bic,tom,150,false
+          2024-01-06,daily_index,ncr,tom,100,false
+    expect:
+      format: csv
+      rows: |
+        month,location_id,market_price,ncr_price,days_compared,market_minus_ncr,market_minus_ncr_pct
+        2024-01-01,bic,120,100,2,20,0.2
 
   - name: test_fct_prices_keeps_one_row_per_grain
     description: >-
