@@ -54,6 +54,38 @@ def test_run_all_stops_at_first_failing_step(monkeypatch: pytest.MonkeyPatch) ->
     assert main(["run-all"]) == 3
 
 
+def test_run_all_carries_on_when_da_is_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    import urllib.error
+
+    from pipeline import cli
+
+    def da_down(*_):
+        raise urllib.error.URLError(TimeoutError("timed out"))
+
+    ran = []
+    for name in ["_lake_pull", "_extract_da", "_ingest_psa_if_due", "_lake_push", "_transform"]:
+        monkeypatch.setattr(cli, name, lambda *_, n=name: ran.append(n) or 0)
+    monkeypatch.setattr(cli, "_export_bq", lambda *_: 0)
+    monkeypatch.setattr(cli, "_publish_data", lambda *_: 0)
+    monkeypatch.setattr(cli, "_ingest_da", da_down)
+    assert main(["run-all"]) == 0
+    assert "_transform" in ran
+
+
+def test_run_all_fails_when_da_answers_with_an_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    import urllib.error
+
+    from pipeline import cli
+
+    def moved(*_):
+        raise urllib.error.HTTPError("https://example.test", 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(cli, "_lake_pull", lambda *_: 0)
+    monkeypatch.setattr(cli, "_ingest_da", moved)
+    with pytest.raises(urllib.error.HTTPError):
+        main(["run-all"])
+
+
 def test_psa_due_after_a_week(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     from datetime import UTC, datetime, timedelta
 

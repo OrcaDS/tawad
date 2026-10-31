@@ -11,6 +11,7 @@ import dataclasses
 import json
 import logging
 import sys
+import urllib.error
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -64,6 +65,16 @@ def _ingest_da(args: argparse.Namespace, settings: Settings) -> int:
         refetch_missing=not args.new_only,
     )
     return 0
+
+
+def _ingest_da_unless_down(args: argparse.Namespace, settings: Settings) -> int:
+    try:
+        return _ingest_da(args, settings)
+    except urllib.error.HTTPError:
+        raise  # DA answered with an error (e.g. 404: the page moved): needs a person
+    except OSError as exc:  # timeout or no connection: DA is down; PSA and gold still refresh
+        logger.warning("DA site unreachable (%s); skipped DA for this run", exc)
+        return 0
 
 
 def _extract_da(args: argparse.Namespace, settings: Settings) -> int:
@@ -171,7 +182,7 @@ def _run_all(args: argparse.Namespace, settings: Settings) -> int:
     ex = argparse.Namespace(series=None, redo=False, limit=None)
     steps = [
         ("lake-pull", _lake_pull, argparse.Namespace(pdfs=False)),
-        ("ingest-da", _ingest_da, da),
+        ("ingest-da", _ingest_da_unless_down, da),
         ("extract-da", _extract_da, ex),
         ("ingest-psa", _ingest_psa_if_due, args),
         # Push before dbt: a failing build (e.g. a new unmapped DA name) must not lose new PDFs
