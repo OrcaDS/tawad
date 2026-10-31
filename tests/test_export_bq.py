@@ -64,6 +64,7 @@ class FakeClient:
         self.rows_after_load = rows_after_load
         self.dataset = SimpleNamespace(labels={"bytes_loaded_total": "1000"})
         self.loaded = []
+        self.meta_rows = None
 
     def get_dataset(self, dataset_id):
         return self.dataset
@@ -77,6 +78,11 @@ class FakeClient:
         self.loaded.append(table_id)
         sha = bq.stored_hash(job_config.destination_table_description)
         self.tables[table_id] = _table(sha, 0, 60, self.rows_after_load)
+        return SimpleNamespace(result=lambda: None)
+
+    def load_table_from_json(self, rows, table_id, job_config):
+        self.meta_rows = rows
+        self.tables[table_id] = _table("", 0, 60, len(rows))
         return SimpleNamespace(result=lambda: None)
 
     def update_table(self, table, fields):
@@ -97,7 +103,19 @@ def test_loads_only_what_is_due_and_counts_bytes(tmp_path):
     assert bq.export_to_bigquery(client, "ds", _exports(tmp_path), now=NOW) == 0
     assert client.loaded == ["ds.b"]
     assert client.tables["ds.b"].description == "sha256:new"
-    assert client.dataset.labels["bytes_loaded_total"] == "1100"
+    assert client.dataset.labels["bytes_loaded_total"] == "1200"  # b + meta_last_refresh
+    a, b = client.meta_rows
+    assert (a["table_name"], b["table_name"]) == ("a", "b")
+    assert a["loaded_at"] == (NOW - timedelta(days=1)).isoformat()  # a was not reloaded
+
+
+def test_last_refresh_is_written_only_after_a_load_or_when_missing(tmp_path):
+    client = FakeClient({"ds.a": _table(sha="new"), "ds.b": _table(sha="new")})
+    bq.export_to_bigquery(client, "ds", _exports(tmp_path), now=NOW)
+    assert client.meta_rows is not None  # missing, so written though nothing loaded
+    client.meta_rows = None
+    bq.export_to_bigquery(client, "ds", _exports(tmp_path), now=NOW)
+    assert client.meta_rows is None
 
 
 def test_force_reloads_everything(tmp_path):

@@ -16,7 +16,7 @@ Join facts to dimensions on the `_id` columns and on `price_date = calendar_date
 
 ## fct_prices
 
-**Grain:** one row per date × source × series × location × item. About 880,000 rows from 2018-02.
+**Grain:** one row per date × source × series × location × item. About 890,000 rows from 2018-02.
 
 | Column | Type | Meaning |
 |---|---|---|
@@ -86,6 +86,21 @@ Caps covered (see `transform/seeds/srp_history.csv` for dates and source links):
 
 The two sources mostly agree: for 26 of the 35 items the median monthly gap is within ±5% (2026-10 data). DA runs lower for fish and squid (6–28%) and for pork kasim (7%). Local garlic is the exception (DA about 20% above PSA's "native" garlic), so DA's "local" and PSA's "native" garlic may not be the same product.
 
+## mart_market_vs_ncr
+
+**Grain:** one row per month × DA market × item (`location_id`, `commodity_id`), from 2018-02. About 24,000 rows.
+
+| Column | Type | Meaning |
+|---|---|---|
+| month | date | First day of the month. |
+| location_id | text | → `dim_location` (a market, never the NCR-wide figure). |
+| commodity_id | text | → `dim_commodity`. |
+| market_price | number | The market's average price that month, over the days compared. |
+| ncr_price | number | DA's NCR-wide price, averaged over the same days. |
+| days_compared | integer | Days where both were priced in the same DA report series, with neither an outlier. Only those days count, so the gap never mixes days or report formats. |
+| market_minus_ncr | number | `market_price − ncr_price`. |
+| market_minus_ncr_pct | number | Same as a fraction of the NCR price (0.05 = the market is 5% dearer). |
+
 ## dim_commodity
 
 **Grain:** one row per item: commodity × variant × origin (315 rows).
@@ -129,3 +144,13 @@ The two sources mostly agree: for 26 of the 35 items the median monthly gap is w
 | is_holy_week | boolean | Palm Sunday to Easter Sunday. |
 | is_christmas_season | boolean | 1 December to 6 January (Three Kings). |
 | is_typhoon_season | boolean | June to November. |
+
+## meta_last_refresh (BigQuery only)
+
+**Grain:** one row per gold table. Written by `tawad export-bq` whenever it loads anything (about monthly), so it says how fresh the BigQuery copy is. The open-data release carries its date in its name instead.
+
+| Column | Type | Meaning |
+|---|---|---|
+| table_name | text | Gold table, e.g. `fct_prices`. |
+| loaded_at | timestamp | When that table was last loaded to BigQuery (UTC). |
+| row_count | integer | Rows in BigQuery after that load. |
