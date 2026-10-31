@@ -26,6 +26,7 @@ RELOAD_BEFORE_EXPIRY = timedelta(days=10)
 CLUSTER_BY = {"fct_prices": ["commodity_id"], "fct_srp_compliance": ["commodity_id"]}
 HASH_PREFIX = "sha256:"
 TOTAL_LABEL = "bytes_loaded_total"
+META_TABLE = "meta_last_refresh"  # written here, not by dbt: BigQuery lags the daily build
 
 
 @dataclass(frozen=True)
@@ -75,12 +76,48 @@ def load_reason(bq_table, sha256: str, now: datetime) -> str | None:
     return None
 
 
+def _get_table(client, table_id: str):
+    from google.api_core.exceptions import NotFound
+
+    try:
+        return client.get_table(table_id)
+    except NotFound:
+        return None
+
+
+def write_last_refresh(client, dataset_id: str, exports: list[Export], now: datetime) -> int:
+    """Replace META_TABLE with when each gold table was last loaded, for the dashboard's
+    "as of" note. Rewritten on every load, so it never expires before the tables do."""
+    from google.cloud import bigquery
+
+    meta_id = f"{dataset_id}.{META_TABLE}"
+    rows = []
+    for exp in exports:
+        t = client.get_table(f"{dataset_id}.{exp.table}")
+        rows.append(
+            {"table_name": exp.table, "loaded_at": t.modified.isoformat(), "row_count": t.num_rows}
+        )
+    config = bigquery.LoadJobConfig(
+        schema=[
+            bigquery.SchemaField("table_name", "STRING"),
+            bigquery.SchemaField("loaded_at", "TIMESTAMP"),
+            bigquery.SchemaField("row_count", "INTEGER"),
+        ],
+        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+    )
+    client.load_table_from_json(rows, meta_id, job_config=config).result()
+    table = client.get_table(meta_id)
+    table.expires = now + EXPIRES_AFTER
+    client.update_table(table, ["expires"])
+    logger.info("%s: written", META_TABLE)
+    return table.num_bytes
+
+
 def export_to_bigquery(
     client, dataset_id: str, exports: list[Export], *, force: bool = False, now=None
 ) -> int:
     """Load the gold exports that are due and check each loaded table's row count against
     DuckDB. Returns 1 on a mismatch, else 0. (Skipped tables are behind on purpose.)"""
-    from google.api_core.exceptions import NotFound
     from google.cloud import bigquery
 
     now = now or datetime.now(UTC)
@@ -88,11 +125,7 @@ def export_to_bigquery(
     loaded_bytes = mismatched = 0
     for exp in exports:
         table_id = f"{dataset_id}.{exp.table}"
-        try:
-            current = client.get_table(table_id)
-        except NotFound:
-            current = None
-        reason = "forced" if force else load_reason(current, exp.sha256, now)
+        reason = "forced" if force else load_reason(_get_table(client, table_id), exp.sha256, now)
         if reason is None:
             logger.info("%s: up to date or not due, skipped", exp.table)
             continue
@@ -113,6 +146,9 @@ def export_to_bigquery(
         if table.num_rows != exp.rows:
             logger.error("%s: DuckDB has %d rows, BigQuery %d", exp.table, exp.rows, table.num_rows)
             mismatched += 1
+
+    if loaded_bytes or _get_table(client, f"{dataset_id}.{META_TABLE}") is None:
+        loaded_bytes += write_last_refresh(client, dataset_id, exports, now)
 
     total = int(dataset.labels.get(TOTAL_LABEL, 0)) + loaded_bytes
     if loaded_bytes:
