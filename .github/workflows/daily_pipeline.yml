@@ -47,3 +47,25 @@ jobs:
       - name: Remove the key
         if: always()
         run: rm -f "$RUNNER_TEMP/gcp-key.json"
+      # Mirror today's open-data release to Kaggle. The dataset was created by hand once;
+      # this only adds versions. Skipped until the KAGGLE_DATASET variable is set.
+      - uses: astral-sh/setup-uv@v6
+        if: vars.KAGGLE_DATASET != ''
+      - name: Push today's release to Kaggle
+        if: vars.KAGGLE_DATASET != ''
+        run: |
+          tag="data-$(date -u +%F)"
+          if ! gh release view "$tag" > /dev/null 2>&1; then
+            echo "No release $tag today (gold unchanged); Kaggle left as is"
+            exit 0
+          fi
+          dir="$RUNNER_TEMP/kaggle" && mkdir "$dir"
+          gh release download "$tag" -D "$dir" -p '*.parquet' -p data_dictionary.md
+          printf '{"id": "%s"}' "$KAGGLE_DATASET" > "$dir/dataset-metadata.json"
+          # kaggle 2.2.5 imports six without declaring it
+          uvx --from kaggle==2.2.5 --with six kaggle datasets version -p "$dir" -m "GitHub release $tag"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          KAGGLE_DATASET: ${{ vars.KAGGLE_DATASET }}
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
