@@ -6,7 +6,7 @@
 
 The Department of Agriculture (DA) has published Metro Manila palengke (wet market) prices almost every day since 2018, but only as PDFs, in at least five changing layouts, with typos and many ways of writing "no price". tawad turns about 2,900 of those reports into one clean, daily-updated table of roughly 890,000 prices (Feb 2018 to today, 55 markets), adds PSA inflation and retail data, and publishes the result as free open data, a BigQuery dataset and a Looker Studio dashboard. Anyone can now answer questions like "did pork outpace inflation?" or "how often were prices above the government cap?" without retyping a PDF.
 
-**[Open the dashboard](https://datastudio.google.com/reporting/c47a145d-92d6-47c1-9d71-34a46927e509)** · **[Download the data](../../releases/latest)** · [Data dictionary](docs/data_dictionary.md)
+**[Open the dashboard](https://datastudio.google.com/reporting/c47a145d-92d6-47c1-9d71-34a46927e509)** · **[Download the data](../../releases/latest)** · [On Kaggle](https://www.kaggle.com/datasets/gemoyakurtl/metro-manila-retail-food-prices-palengke) · [Data dictionary](docs/data_dictionary.md)
 
 ![Dashboard](docs/dashboard.png)
 
@@ -82,7 +82,7 @@ xychart-beta horizontal
 
 ## Get the data
 
-The [latest GitHub Release](../../releases/latest) holds every gold table as Parquet and as CSV (one zip), with [`data_dictionary.md`](docs/data_dictionary.md). It updates whenever the data changes.
+The [latest GitHub Release](../../releases/latest) holds every gold table as Parquet and as CSV (one zip), with [`data_dictionary.md`](docs/data_dictionary.md). It updates whenever the data changes. The same Parquet tables and dictionary are mirrored to [Kaggle](https://www.kaggle.com/datasets/gemoyakurtl/metro-manila-retail-food-prices-palengke), as a new dataset version with each release.
 
 - **Attribution:** Source: Department of Agriculture Bantay Presyo reports. Cleaned and standardized by tawad. Not an official DA product.
 - **Disclaimer:** provided as is. DA's own typos are kept and flagged (`is_outlier`), never fixed, and parsing may contain errors.
@@ -157,6 +157,6 @@ Settings come from environment variables, all listed in [`.env.example`](.env.ex
 
 ## The daily run
 
-[`daily_pipeline.yml`](.github/workflows/daily_pipeline.yml) runs `tawad run-all` in the published image every day at 10:00 Philippine time: pull the lake, download and extract new DA reports, pull PSA (weekly), push the lake, `dbt build`, load BigQuery (monthly), and publish a new open-data release if gold changed. If DA's site is down, that day's DA step is skipped and the rest still runs. It needs the repository secret `GCP_SA_KEY` and the variable `GCP_PROJECT_ID`.
+[`daily_pipeline.yml`](.github/workflows/daily_pipeline.yml) runs `tawad run-all` in the published image every day at 10:00 Philippine time: pull the lake, download and extract new DA reports, pull PSA (weekly), push the lake, `dbt build`, load BigQuery (monthly), and publish a new open-data release if gold changed, then mirror it to Kaggle. If DA's site is down, that day's DA step is skipped and the rest still runs. It needs the repository secret `GCP_SA_KEY` and the variable `GCP_PROJECT_ID`; the Kaggle mirror also needs the secret `KAGGLE_API_TOKEN` and the variable `KAGGLE_DATASET` (`owner/slug`), and is skipped without them.
 
 GitHub turns off scheduled workflows in public repositories after 60 days without activity. If the data stops updating, re-enable the workflow under Actions.
