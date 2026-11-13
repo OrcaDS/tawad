@@ -214,3 +214,28 @@ unit_tests:
         2024-03-01,price_monitoring,revised.pdf
         2024-03-01,daily_index,dpi.pdf
         2024-03-02,price_monitoring,next-day.pdf
+
+  - name: test_names_match_seed_without_footnote_marks
+    description: Case, line breaks and footnote marks (ᵃ, ¹) don't stop a name matching its seed row.
+    model: stg_da_prices
+    given:
+      - input: ref('commodity_map')
+        format: csv
+        rows: |
+          category_header_raw,commodity_raw,specification_raw,commodity
+          KADIWA RICE-FOR-ALL,P20 BENTENG BIGAS MERON NA,,P20 rice (Benteng Bigas)
+      - input: ref('markets')
+        rows: []
+      - input: source('bronze', 'da_prices')
+        format: csv
+        rows: |
+          report_date,series,revision_rank,category_header_raw,commodity_raw
+          2024-04-01,price_monitoring,0,KADIWA RICE-FOR-ALL,P20 Benteng Bigas Meron NAᵃ
+          2024-04-02,price_monitoring,0,KADIWA RICE-FOR-ALL,"P20 BENTENG BIGAS
+            MERON NA¹"
+    expect:
+      format: csv
+      rows: |
+        report_date,commodity
+        2024-04-01,P20 rice (Benteng Bigas)
+        2024-04-02,P20 rice (Benteng Bigas)

@@ -222,6 +222,8 @@ unit_tests:
           2024-01-02,price_monitoring,Bicutan Market,Pork liempo (belly),market_range,2,9,390
           2024-01-03,price_monitoring,NCR (all markets),Mango (carabao),ncr_range,1,7,75
           2024-01-03,price_monitoring,NCR (all markets),Mango (carabao),ncr_range,1,3,195
+          2024-01-04,price_monitoring,Bicutan Market,,market_range,1,1,60
+          2024-01-04,price_monitoring,,Tomato,market_range,1,2,70
     expect:
       format: csv
       rows: |
