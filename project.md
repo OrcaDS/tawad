@@ -228,7 +228,7 @@ My own weekly prices were dropped: DA already monitors Bicutan Market, so they w
 ### 6.8 Data quality
 Required dbt tests: `not_null` and `unique` on keys, accepted values for categories, and relationships between facts and dimensions. Custom checks:
 - Prices fall within plausible bounds per commodity, so the pipeline flags outliers (e.g. ₱5/kg pork) rather than dropping them.
-- Every commodity in bronze maps to a canonical commodity; an unmapped name fails the run and prints the name so I can add it to the seed. Same for markets.
+- Every commodity in bronze maps to a canonical commodity; an unmapped name raises a warning that prints the name so I can add it to the seed, and its rows stay out of gold until then (the run carries on). Same for markets. Footnote marks (ᵃ, ¹) are dropped before matching.
 - A freshness check warns if no new DA report has arrived in more than 7 days.
 - The DuckDB-vs-BigQuery row-count reconciliation from §6.7.
 

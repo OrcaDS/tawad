@@ -1,9 +1,10 @@
 {#
   Key form of a DA name for the seed joins: upper case, whitespace (incl. the PDF's line
-  breaks) collapsed to one space, blank -> NULL. The seeds store their keys in this form.
+  breaks) collapsed to one space, footnote marks (superscript letters and digits, e.g.
+  "NAᵃ") dropped, blank -> NULL. The seeds store their keys in this form.
 #}
 {% macro normalize_name(column) -%}
-nullif(upper(regexp_replace(trim({{ column }}), '\s+', ' ', 'g')), '')
+nullif(upper(regexp_replace(trim(regexp_replace({{ column }}, '[ᴬ-ᵪᶛ-ᶿ⁰-ₜ¹²³]', '', 'g')), '\s+', ' ', 'g')), '')
 {%- endmacro %}
 
 {#

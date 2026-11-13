@@ -1,5 +1,7 @@
--- Every commodity and market name in bronze must have a row in its seed. Fails the run
--- and logs each missing name, so it can be added to transform/seeds/.
+-- Every commodity and market name in bronze should have a row in its seed. Warns and logs
+-- each missing name, so it can be added to transform/seeds/; until then fct_prices leaves
+-- those rows out, so one new DA name doesn't stop the daily run.
+{{ config(severity='warn') }}
 {% set unmapped %}
 select distinct
     'commodity_map' as seed,

@@ -11,6 +11,9 @@
 -- is_outlier flags, never drops: a price under half or over double the median for that
 -- item in that month (all locations), or a range with low > high. Mostly DA's own typos
 -- or columns DA shifted (e.g. 2025-11-04 lists eggs at 180 per piece).
+--
+-- Rows whose commodity or market name isn't in its seed yet are left out (the
+-- every_da_name_is_mapped test warns and names them); they return once the seed row is added.
 with deduped as (
     select
         report_date as price_date,
@@ -23,6 +26,7 @@ with deduped as (
         price_low,
         price_high
     from {{ ref('stg_da_prices') }}
+    where commodity is not null and market is not null
     qualify row_number() over (
         partition by report_date, series, market, commodity, variant, origin
         order by
