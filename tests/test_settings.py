@@ -72,6 +72,42 @@ def test_run_all_carries_on_when_da_is_down(monkeypatch: pytest.MonkeyPatch) -> 
     assert "_transform" in ran
 
 
+def test_da_skip_is_annotated_on_github(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    import urllib.error
+
+    from pipeline import cli
+
+    def da_down(*_):
+        raise urllib.error.URLError(TimeoutError("timed out"))
+
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setattr(cli.logger, "handlers", [])  # restored after, so the handler doesn't leak
+    for name in ["_lake_pull", "_extract_da", "_ingest_psa_if_due", "_lake_push", "_transform"]:
+        monkeypatch.setattr(cli, name, lambda *_: 0)
+    monkeypatch.setattr(cli, "_export_bq", lambda *_: 0)
+    monkeypatch.setattr(cli, "_publish_data", lambda *_: 0)
+    monkeypatch.setattr(cli, "_ingest_da", da_down)
+    assert main(["run-all"]) == 0
+    assert "::warning::DA site unreachable" in capsys.readouterr().out
+
+
+def test_dbt_warnings_lists_only_warned_nodes() -> None:
+    from types import SimpleNamespace as NS
+
+    from dbt.artifacts.schemas.results import TestStatus
+
+    from pipeline.cli import _dbt_warnings
+
+    run = NS(
+        results=[
+            NS(status=TestStatus.Warn, node=NS(name="every_da_name_is_mapped"), message="Got 2"),
+            NS(status=TestStatus.Pass, node=NS(name="unique_x"), message=None),
+        ]
+    )
+    assert _dbt_warnings(run) == ["every_da_name_is_mapped: Got 2"]
+    assert _dbt_warnings(None) == []  # dbt crashed before running anything
+
+
 def test_run_all_fails_when_da_answers_with_an_error(monkeypatch: pytest.MonkeyPatch) -> None:
     import urllib.error
 

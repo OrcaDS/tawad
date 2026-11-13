@@ -38,7 +38,7 @@ jobs:
             -v "$RUNNER_TEMP/lake:/app/lake" \
             -v "$RUNNER_TEMP/gcp-key.json:/secrets/gcp-key.json:ro" \
             -v "$(command -v gh):/usr/local/bin/gh:ro" \
-            -e GH_TOKEN -e GH_REPO="$GITHUB_REPOSITORY" \
+            -e GH_TOKEN -e GH_REPO="$GITHUB_REPOSITORY" -e GITHUB_ACTIONS \
             -e GCP_PROJECT_ID -e GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcp-key.json \
             "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/tawad-pipeline:latest" run-all
         env:
