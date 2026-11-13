@@ -142,7 +142,15 @@ def _transform(args: argparse.Namespace, settings: Settings) -> int:
             json.dumps(dbt_vars),
         ]
     )
+    for warned in _dbt_warnings(result.result):
+        logger.warning("dbt warned on %s (see the dbt log for details)", warned)
     return 0 if result.success else 1
+
+
+def _dbt_warnings(run_result) -> list[str]:
+    """Name each dbt node that ended in warn, e.g. a new unmapped DA name held out of gold."""
+    results = getattr(run_result, "results", None) or []
+    return [f"{r.node.name}: {r.message}" for r in results if str(r.status) == "warn"]
 
 
 def _export_bq(args: argparse.Namespace, settings: Settings) -> int:
@@ -258,6 +266,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         level=settings.log_level,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    if settings.github_actions:  # also show tawad's warnings on the run page, not only in its log
+        annotate = logging.StreamHandler(sys.stdout)
+        annotate.setLevel(logging.WARNING)
+        annotate.setFormatter(logging.Formatter("::warning::%(message)s"))
+        logger.addHandler(annotate)
     return args.handler(args, settings)
 
 

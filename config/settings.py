@@ -23,6 +23,7 @@ ENV_VARS = (
     "PSA_API_BASE",
     "GCP_PROJECT_ID",
     "BQ_DATASET",
+    "GITHUB_ACTIONS",
 )
 
 
@@ -56,6 +57,7 @@ class Settings:
     psa_api_base: str
     gcp_project_id: str
     bq_dataset: str
+    github_actions: bool = False  # set by the runner; turns warnings into run annotations
 
     @property
     def duckdb_path(self) -> Path:
@@ -84,4 +86,5 @@ def load_settings() -> Settings:
         psa_api_base=_env("PSA_API_BASE", "https://openstat.psa.gov.ph/PXWeb/api/v1/en/DB"),
         gcp_project_id=_env("GCP_PROJECT_ID", ""),
         bq_dataset=_env("BQ_DATASET", "palengke_gold"),
+        github_actions=_env("GITHUB_ACTIONS", "") == "true",
     )
