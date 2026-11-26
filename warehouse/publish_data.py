@@ -23,6 +23,24 @@ logger = logging.getLogger(__name__)
 DICTIONARY = Path("docs/data_dictionary.md")
 CSV_ZIP = "tawad_gold_csv.zip"
 NOTES = """\
+## Which file do I need?
+
+**Most people want `fct_prices.parquet`**: one price per day × market × food item, Feb 2018 to \
+today. It holds codes, not names, so also download `dim_commodity.parquet` (item names and \
+units) and `dim_location.parquet` (market names) and join on `commodity_id` and `location_id`. \
+Prefer CSV? All tables are in `{csv_zip}`.
+
+| If you want… | Download |
+|---|---|
+| Daily prices per market and item | `fct_prices` + `dim_commodity` + `dim_location` |
+| Prices above the government price cap (SRP) | `fct_srp_compliance` |
+| Monthly prices adjusted for inflation | `mart_real_prices` |
+| Each market compared with the Metro Manila average | `mart_market_vs_ncr` |
+| DA prices next to PSA's retail prices | `mart_da_vs_psa` |
+| What every column means | `data_dictionary.md` |
+
+## About
+
 Metro Manila retail food prices, cleaned and standardized. Each gold table comes as Parquet \
 (`<table>.parquet`) and as CSV (all tables in `{csv_zip}`). Columns, units and grain: \
 `data_dictionary.md`.
