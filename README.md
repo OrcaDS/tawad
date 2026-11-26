@@ -1,4 +1,6 @@
-# Palengke Price Tracker (tawad)
+# Metro Manila Retail Food Prices (2018–now)
+
+_Built with **tawad**, the open-source pipeline in this repository. tawad is the pipeline's name, not the dataset's._
 
 [![CI](https://github.com/OrcaDS/tawad/actions/workflows/ci.yml/badge.svg)](https://github.com/OrcaDS/tawad/actions/workflows/ci.yml)
 [![Daily pipeline](https://github.com/OrcaDS/tawad/actions/workflows/daily_pipeline.yml/badge.svg)](https://github.com/OrcaDS/tawad/actions/workflows/daily_pipeline.yml)
