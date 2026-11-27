@@ -133,14 +133,15 @@ def export_to_bigquery(
             source_format=bigquery.SourceFormat.PARQUET,
             write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
             clustering_fields=CLUSTER_BY.get(exp.table),
-            destination_table_description=f"{HASH_PREFIX}{exp.sha256}",
         )
         with exp.path.open("rb") as f:
             client.load_table_from_file(f, table_id, job_config=config).result()
         table = client.get_table(table_id)
-        # set explicitly: a WRITE_TRUNCATE load may keep the old expiry
+        # set after the load: a load job can't change an existing table's description
+        # (BigQuery 400s), and a WRITE_TRUNCATE load may keep the old expiry
+        table.description = f"{HASH_PREFIX}{exp.sha256}"
         table.expires = now + EXPIRES_AFTER
-        client.update_table(table, ["expires"])
+        client.update_table(table, ["description", "expires"])
         loaded_bytes += table.num_bytes
         logger.info("%s: loaded (%s), %d bytes", exp.table, reason, table.num_bytes)
         if table.num_rows != exp.rows:

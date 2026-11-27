@@ -75,9 +75,13 @@ class FakeClient:
         return self.tables[table_id]
 
     def load_table_from_file(self, f, table_id, job_config):
+        # like BigQuery: a load can't change an existing table's description
+        assert job_config.destination_table_description is None
         self.loaded.append(table_id)
-        sha = bq.stored_hash(job_config.destination_table_description)
-        self.tables[table_id] = _table(sha, 0, 60, self.rows_after_load)
+        old = self.tables.get(table_id)
+        self.tables[table_id] = _table("old", 0, 60, self.rows_after_load)
+        if old:
+            self.tables[table_id].description = old.description
         return SimpleNamespace(result=lambda: None)
 
     def load_table_from_json(self, rows, table_id, job_config):
